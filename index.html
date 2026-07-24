@@ -356,17 +356,17 @@
     const errorMessage = document.getElementById('errorMessage');
     const resultsContainer = document.getElementById('resultsContainer');
 
-    // Auto-formatting Input (Strip non-alphanumeric, uppercase)
+    // Input auto-formatting: Strip spaces/hyphens/special chars and convert to UPPERCASE
     vehicleInput.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     });
 
-    // Safe Data Extraction Utility
-    function val(value, suffix = '') {
-      if (value === null || value === undefined || value === '' || value === 'null') {
+    // Helper function for safe string value extraction
+    function getVal(val, suffix = '') {
+      if (val === null || val === undefined || val === '' || val === 'null' || val === 'undefined') {
         return 'NA';
       }
-      return `${value}${suffix}`;
+      return `${val}${suffix}`;
     }
 
     // Toggle Loading State
@@ -383,8 +383,8 @@
 
     // API Fetch Function
     async function fetchVehicleData(cleanRegNo) {
-      const primaryUrl = `https://api.example.com/v1/vehicle?vehicle_number=${cleanRegNo}`;
-
+      const primaryUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
+      
       try {
         const response = await fetch(primaryUrl);
         if (!response.ok) throw new Error("API Network response was not ok");
@@ -397,73 +397,24 @@
         }
       } catch (error) {
         console.error("Fetch Error:", error);
-        
-        // Mock fallback data generation for demonstration/testing
-        if (cleanRegNo.length >= 8) {
-          return generateMockData(cleanRegNo);
-        }
         throw error;
       }
     }
 
-    // Mock Data Generator for standard testing
-    function generateMockData(regNo) {
-      return {
-        makeData: { v_make_display_name: "Tata Motors", v_make_logo_url: "" },
-        maker_model: "Nexon EV Max",
-        maker_description: "Tata Nexon EV Max Lux Dark Edition",
-        rc_number: regNo,
-        rc_status: "ACTIVE",
-        vehicle_category_description: "Motor Car (LMV)",
-        fuel_type: "ELECTRIC",
-        norms_type: "NOT APPLICABLE",
-        owner_name: "Rajesh Kumar",
-        father_name: "Suresh Kumar",
-        owner_number: "1",
-        registration_date: "12-Jan-2023",
-        registered_at: "MH01 - Mumbai Central",
-        yearofPurchase: "2023",
-        present_address: "102, Green Valley Apartments, Andheri West, Mumbai, Maharashtra - 400053",
-        permanent_address: "102, Green Valley Apartments, Andheri West, Mumbai, Maharashtra - 400053",
-        vehicle_chasi_number: "MAT624123N1234567",
-        vehicle_engine_number: "3PhaseAC98765",
-        cubic_capacity: "0",
-        no_cylinders: "0",
-        manufacturing_date: "11/2022",
-        color: "DAYTONA GREY",
-        unladen_weight: "1400",
-        vehicle_gross_weight: "1800",
-        wheelbase: "2498",
-        seat_capacity: "5",
-        sleeper_capacity: "0",
-        standing_capacity: "0",
-        body_type: "SOLO WITH PILLION / SUV",
-        financed: true,
-        financer: "HDFC BANK LTD",
-        insurance_company: "ICICI Lombard General Insurance Co. Ltd.",
-        insurance_policy_number: "3001/23456789/00/000",
-        insurance_upto: "11-Jan-2026",
-        fit_up_to: "11-Jan-2038",
-        pucc_number: "MH00100980001234",
-        pucc_upto: "11-Jan-2025",
-        tax_paid_upto: "LTT (Life Time Tax)",
-        blacklist_status: "NONE",
-        noc_details: "NA"
-      };
-    }
-
-    // Render Data into UI
+    // Dynamic Rendering Function
     function renderVehicleData(data) {
-      // Hero Banner
+      // 1. Hero Title
       const makeName = data.makeData?.v_make_display_name || '';
       const modelName = data.maker_model || data.modelData?.v_model_name || '';
-      const fullTitle = `${makeName} ${modelName}`.trim() || "VEHICLE DETAILS";
-      
+      const fullTitle = `${makeName} ${modelName}`.trim() || 'VEHICLE DETAILS';
       document.getElementById('heroTitle').textContent = fullTitle;
-      document.getElementById('heroMakerDesc').textContent = val(data.maker_description);
-      document.getElementById('heroRcNumber').textContent = `RC: ${val(data.rc_number)}`;
 
-      // RC Status Badge
+      // 2. RC Display Number
+      document.getElementById('heroRcNumber').textContent = `RC: ${getVal(data.rc_number)}`;
+
+      // Maker Description & Status
+      document.getElementById('heroMakerDesc').textContent = getVal(data.maker_description);
+      
       const statusBadge = document.getElementById('heroRcStatus');
       const status = (data.rc_status || 'UNKNOWN').toUpperCase();
       statusBadge.textContent = status;
@@ -489,51 +440,57 @@
         fallbackIcon.classList.remove('hidden');
       }
 
-      document.getElementById('heroCategory').textContent = val(data.vehicle_category_description || data.vehicle_category);
-      document.getElementById('heroFuelNorms').textContent = `${val(data.fuel_type)} (${val(data.norms_type)})`;
+      // 3. Vehicle Category
+      document.getElementById('heroCategory').textContent = getVal(data.vehicle_category_description || data.vehicle_category);
 
-      // Section 1: Ownership
-      document.getElementById('ownerName').textContent = val(data.owner_name);
-      document.getElementById('fatherName').textContent = val(data.father_name);
-      document.getElementById('ownerNumber').textContent = val(data.owner_number);
-      document.getElementById('registrationDate').textContent = val(data.registration_date);
-      document.getElementById('registeredAt').textContent = val(data.registered_at);
-      document.getElementById('yearOfPurchase').textContent = val(data.yearofPurchase);
+      // 4. Fuel / Norms
+      const fuel = data.fuel_type ? data.fuel_type : 'NA';
+      const norms = data.norms_type ? ` (${data.norms_type})` : '';
+      document.getElementById('heroFuelNorms').textContent = `${fuel}${norms}`;
 
-      // Section 2: Address
-      document.getElementById('presentAddress').textContent = val(data.present_address);
-      document.getElementById('permanentAddress').textContent = val(data.permanent_address);
+      // 5-10. Ownership & Registration
+      document.getElementById('ownerName').textContent = getVal(data.owner_name);
+      document.getElementById('fatherName').textContent = getVal(data.father_name);
+      document.getElementById('ownerNumber').textContent = getVal(data.owner_number);
+      document.getElementById('registrationDate').textContent = getVal(data.registration_date);
+      document.getElementById('registeredAt').textContent = getVal(data.registered_at);
+      document.getElementById('yearOfPurchase').textContent = getVal(data.yearofPurchase);
 
-      // Section 3: Tech Specs
-      document.getElementById('chassisNumber').textContent = val(data.vehicle_chasi_number);
-      document.getElementById('engineNumber').textContent = val(data.vehicle_engine_number);
-      document.getElementById('cubicCapacity').textContent = val(data.cubic_capacity, ' cc');
-      document.getElementById('noCylinders').textContent = val(data.no_cylinders);
-      document.getElementById('manufacturingDate').textContent = val(data.manufacturing_date);
-      document.getElementById('color').textContent = val(data.color);
-      document.getElementById('unladenWeight').textContent = val(data.unladen_weight, ' kg');
-      document.getElementById('grossWeight').textContent = val(data.vehicle_gross_weight, ' kg');
-      document.getElementById('wheelbase').textContent = val(data.wheelbase, ' mm');
-      document.getElementById('seatCapacity').textContent = val(data.seat_capacity);
-      document.getElementById('sleeperCapacity').textContent = val(data.sleeper_capacity);
-      document.getElementById('bodyType').textContent = val(data.body_type);
+      // 11-12. Addresses
+      document.getElementById('presentAddress').textContent = getVal(data.present_address);
+      document.getElementById('permanentAddress').textContent = getVal(data.permanent_address);
 
-      // Section 4: Finance & Insurance
-      document.getElementById('financedStatus').textContent = data.financed ? "FINANCED" : "NO FINANCE / CASH";
-      document.getElementById('financer').textContent = val(data.financer);
-      document.getElementById('insuranceCompany').textContent = val(data.insurance_company);
-      document.getElementById('insurancePolicyNumber').textContent = val(data.insurance_policy_number);
-      document.getElementById('insuranceUpto').textContent = val(data.insurance_upto);
+      // 13-24. Technical Specifications
+      document.getElementById('chassisNumber').textContent = getVal(data.vehicle_chasi_number);
+      document.getElementById('engineNumber').textContent = getVal(data.vehicle_engine_number);
+      document.getElementById('cubicCapacity').textContent = data.cubic_capacity ? `${data.cubic_capacity} cc` : 'NA';
+      document.getElementById('noCylinders').textContent = getVal(data.no_cylinders);
+      document.getElementById('manufacturingDate').textContent = getVal(data.manufacturing_date);
+      document.getElementById('color').textContent = getVal(data.color);
+      document.getElementById('unladenWeight').textContent = data.unladen_weight ? `${data.unladen_weight} kg` : 'NA';
+      document.getElementById('grossWeight').textContent = data.vehicle_gross_weight ? `${data.vehicle_gross_weight} kg` : 'NA';
+      document.getElementById('wheelbase').textContent = data.wheelbase ? `${data.wheelbase} mm` : 'NA';
+      document.getElementById('seatCapacity').textContent = getVal(data.seat_capacity);
+      document.getElementById('sleeperCapacity').textContent = getVal(data.sleeper_capacity);
+      document.getElementById('bodyType').textContent = getVal(data.body_type);
 
-      // Section 5: Compliance
-      document.getElementById('fitUpTo').textContent = val(data.fit_up_to);
-      document.getElementById('puccNumber').textContent = val(data.pucc_number);
-      document.getElementById('puccUpto').textContent = val(data.pucc_upto);
-      document.getElementById('taxPaidUpto').textContent = val(data.tax_paid_upto || data.tax_upto);
-      document.getElementById('blacklistStatus').textContent = val(data.blacklist_status);
-      document.getElementById('nocDetails').textContent = val(data.noc_details);
+      // Finance & Insurance Details
+      const isFinanced = data.financed === true || String(data.financed).toLowerCase() === 'true';
+      document.getElementById('financedStatus').textContent = isFinanced ? "FINANCED" : "NO FINANCE / CASH";
+      document.getElementById('financer').textContent = getVal(data.financer);
+      document.getElementById('insuranceCompany').textContent = getVal(data.insurance_company);
+      document.getElementById('insurancePolicyNumber').textContent = getVal(data.insurance_policy_number);
+      document.getElementById('insuranceUpto').textContent = getVal(data.insurance_upto);
 
-      // Refresh icons if needed
+      // Fitness & Compliance
+      document.getElementById('fitUpTo').textContent = getVal(data.fit_up_to);
+      document.getElementById('puccNumber').textContent = getVal(data.pucc_number);
+      document.getElementById('puccUpto').textContent = getVal(data.pucc_upto);
+      document.getElementById('taxPaidUpto').textContent = getVal(data.tax_paid_upto || data.tax_upto);
+      document.getElementById('blacklistStatus').textContent = getVal(data.blacklist_status);
+      document.getElementById('nocDetails').textContent = getVal(data.noc_details);
+
+      // Refresh Lucide Icons
       lucide.createIcons();
     }
 
