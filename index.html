@@ -381,35 +381,66 @@
       }
     }
 
-    // Updated API Fetch Function with CORS Proxy Fallback
+    // Multi-Proxy Fetch Engine
     async function fetchVehicleData(cleanRegNo) {
       const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      
+      // Array of public CORS proxy candidates
+      const proxyServices = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+        targetUrl // Direct attempt as fallback
+      ];
 
-      let response;
-      try {
-        // Attempt 1: Direct Fetch
-        response = await fetch(targetUrl);
-        if (!response.ok) throw new Error("Direct fetch failed");
-      } catch (err) {
-        console.warn("Direct fetch blocked/failed, trying via CORS Proxy...");
-        // Attempt 2: CORS Proxy Fallback
-        response = await fetch(proxyUrl);
+      let rawJson = null;
+      let lastError = null;
+
+      for (const endpoint of proxyServices) {
+        try {
+          console.log("Trying API Endpoint:", endpoint);
+          const res = await fetch(endpoint, {
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+
+          if (!res.ok) continue;
+
+          const text = await res.text();
+          
+          // Parse JSON safely
+          let dataObj;
+          try {
+            dataObj = JSON.parse(text);
+          } catch (e) {
+            continue;
+          }
+
+          // Handle AllOrigins wrapper if present
+          if (dataObj.contents) {
+            try {
+              dataObj = JSON.parse(dataObj.contents);
+            } catch (e) {
+              dataObj = dataObj.contents;
+            }
+          }
+
+          // Check if data key exists
+          if (dataObj && (dataObj.data || dataObj.status === "success")) {
+            rawJson = dataObj.data || dataObj;
+            break; // Success! Exit loop
+          }
+        } catch (err) {
+          lastError = err;
+          console.warn("Proxy failed, trying next candidate...", err);
+        }
       }
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch vehicle data from API");
-      }
-
-      const json = await response.json();
-
-      // Validate API Response
-      if (json && json.status === "success" && json.data) {
-        return json.data;
-      } else if (json && json.data) {
-        return json.data;
+      if (rawJson) {
+        return rawJson;
       } else {
-        throw new Error("No data found for this vehicle number");
+        throw new Error(lastError || "Unable to fetch vehicle details across all API proxies.");
       }
     }
 
@@ -522,12 +553,16 @@
 
       try {
         const vehicleData = await fetchVehicleData(cleanRegNo);
+        
+        // Hide Error Card & Show Results Container
+        errorCard.classList.add('hidden');
         renderVehicleData(vehicleData);
         resultsContainer.classList.remove('hidden');
       } catch (err) {
         console.error("Search Error:", err);
         errorMessage.textContent = "No records found for this vehicle number. Please double check and try again.";
         errorCard.classList.remove('hidden');
+        resultsContainer.classList.add('hidden');
       } finally {
         setLoading(false);
       }
