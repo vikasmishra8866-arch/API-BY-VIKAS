@@ -356,7 +356,7 @@
     const errorMessage = document.getElementById('errorMessage');
     const resultsContainer = document.getElementById('resultsContainer');
 
-    // Input auto-formatting: Strip non-alphanumeric chars and convert to UPPERCASE
+    // Input Formatting: Auto strip spaces/hyphens and convert to UPPERCASE
     vehicleInput.addEventListener('input', (e) => {
       e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     });
@@ -381,66 +381,31 @@
       }
     }
 
-    // Multi-Proxy Fetch Engine
+    // Exact CORS Fix & AllOrigins Proxy Fetch Logic
     async function fetchVehicleData(cleanRegNo) {
       const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
-      
-      // Array of public CORS proxy candidates
-      const proxyServices = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-        `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-        targetUrl // Direct attempt as fallback
-      ];
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
-      let rawJson = null;
-      let lastError = null;
+      try {
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error("Network proxy response failed");
+        
+        const json = await response.json();
+        if (!json.contents) throw new Error("Empty response from proxy");
 
-      for (const endpoint of proxyServices) {
-        try {
-          console.log("Trying API Endpoint:", endpoint);
-          const res = await fetch(endpoint, {
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
+        // Parse the JSON string wrapped inside allorigins contents
+        let apiData = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
 
-          if (!res.ok) continue;
-
-          const text = await res.text();
-          
-          // Parse JSON safely
-          let dataObj;
-          try {
-            dataObj = JSON.parse(text);
-          } catch (e) {
-            continue;
-          }
-
-          // Handle AllOrigins wrapper if present
-          if (dataObj.contents) {
-            try {
-              dataObj = JSON.parse(dataObj.contents);
-            } catch (e) {
-              dataObj = dataObj.contents;
-            }
-          }
-
-          // Check if data key exists
-          if (dataObj && (dataObj.data || dataObj.status === "success")) {
-            rawJson = dataObj.data || dataObj;
-            break; // Success! Exit loop
-          }
-        } catch (err) {
-          lastError = err;
-          console.warn("Proxy failed, trying next candidate...", err);
+        if (apiData && apiData.data) {
+          return apiData.data;
+        } else if (apiData && apiData.rc_number) {
+          return apiData;
+        } else {
+          throw new Error("No vehicle details found for this number");
         }
-      }
-
-      if (rawJson) {
-        return rawJson;
-      } else {
-        throw new Error(lastError || "Unable to fetch vehicle details across all API proxies.");
+      } catch (error) {
+        console.error("Fetch Execution Error:", error);
+        throw error;
       }
     }
 
@@ -553,16 +518,12 @@
 
       try {
         const vehicleData = await fetchVehicleData(cleanRegNo);
-        
-        // Hide Error Card & Show Results Container
-        errorCard.classList.add('hidden');
         renderVehicleData(vehicleData);
         resultsContainer.classList.remove('hidden');
       } catch (err) {
         console.error("Search Error:", err);
         errorMessage.textContent = "No records found for this vehicle number. Please double check and try again.";
         errorCard.classList.remove('hidden');
-        resultsContainer.classList.add('hidden');
       } finally {
         setLoading(false);
       }
