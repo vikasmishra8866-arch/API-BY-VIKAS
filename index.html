@@ -4,32 +4,39 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vehicle Info Portal</title>
-  
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
       theme: {
         extend: {
           colors: {
-            brand: {
-              dark: '#0f172a',
-              card: '#1e293b',
+            slate: {
+              950: '#0b1120',
+              900: '#0f172a',
+              850: '#131d33',
+              800: '#1e293b',
+              700: '#334155',
+            },
+            accent: {
               emerald: '#10b981',
               cyan: '#06b6d4',
             }
+          },
+          boxShadow: {
+            'neon-emerald': '0 0 20px -3px rgba(16, 185, 129, 0.3)',
+            'neon-cyan': '0 0 20px -3px rgba(6, 182, 212, 0.3)',
+            'neon-red': '0 0 20px -3px rgba(239, 68, 68, 0.3)',
           }
         }
       }
     }
   </script>
-
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
   <style>
-    /* Custom Scrollbar */
+    /* Custom scrollbar for sleeker UI */
     ::-webkit-scrollbar {
       width: 8px;
     }
@@ -43,491 +50,564 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #475569;
     }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
   </style>
 </head>
-<body class="bg-[#0f172a] text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-slate-900">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-900">
 
   <!-- TOP HEADER -->
-  <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+  <header class="border-b border-slate-800 bg-slate-950/80 sticky top-0 z-50 backdrop-blur-md">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <div class="p-2 bg-gradient-to-tr from-emerald-500 to-cyan-500 rounded-xl text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
-          <i data-lucide="car" class="w-6 h-6"></i>
+        <div class="p-2 bg-gradient-to-tr from-emerald-500 to-cyan-500 rounded-xl text-slate-950 shadow-neon-emerald">
+          <i data-lucide="car" class="w-6 h-6 stroke-[2.5]"></i>
         </div>
-        <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-          Vehicle Info Portal
-        </span>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+            Vehicle Info Portal
+          </h1>
+          <p class="text-xs text-slate-400">National RTO Public Lookup</p>
+        </div>
       </div>
-      <span class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-        Live Lookup
-      </span>
+      <div class="hidden sm:flex items-center space-x-2 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>Live Database Connected</span>
+      </div>
     </div>
   </header>
 
   <!-- MAIN CONTAINER -->
-  <main class="flex-grow max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-
-    <!-- SEARCH HERO SECTION -->
-    <section class="text-center space-y-6 max-w-2xl mx-auto pt-4">
-      <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-100">
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col items-center">
+    
+    <!-- HERO / SEARCH SECTION -->
+    <section class="w-full max-w-2xl text-center mt-4 mb-8">
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
         Instant Vehicle Registry Lookup
-      </h1>
-      <p class="text-slate-400 text-sm sm:text-base">
-        Enter any vehicle registration number below to retrieve ownership, technical specifications, insurance, and compliance status.
+      </h2>
+      <p class="text-slate-400 text-sm sm:text-base mb-6">
+        Enter any Indian vehicle registration number to fetch comprehensive owner, vehicle spec, insurance, and tax details.
       </p>
 
       <!-- SEARCH FORM -->
-      <form id="searchForm" class="relative flex items-center max-w-xl mx-auto">
+      <form id="searchForm" class="relative flex flex-col sm:flex-row items-center gap-3 w-full">
         <div class="relative w-full">
-          <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
+          <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
             <i data-lucide="search" class="w-5 h-5"></i>
           </div>
           <input
             type="text"
             id="vehicleInput"
-            placeholder="e.g., MH01AB1234"
-            maxlength="15"
+            placeholder="e.g. MH01AB1234 or DL3CCE1234"
             required
-            class="w-full pl-11 pr-32 py-3.5 bg-slate-800/80 border border-slate-700/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-100 placeholder-slate-500 tracking-wider font-mono font-semibold uppercase text-base shadow-inner transition duration-200"
+            maxlength="15"
+            class="w-full pl-11 pr-4 py-4 bg-slate-950 border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-white placeholder-slate-500 font-mono tracking-wider uppercase text-lg transition duration-200 shadow-inner"
           />
-          <button
-            type="submit"
-            id="searchBtn"
-            class="absolute right-1.5 top-1.5 bottom-1.5 px-5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold rounded-lg transition duration-200 flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span id="btnText">Search</span>
-            <span id="btnSpinner" class="hidden">
-              <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
-            </span>
-          </button>
         </div>
+        <button
+          type="submit"
+          id="searchBtn"
+          class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold rounded-xl transition duration-200 shadow-neon-emerald hover:shadow-neon-cyan flex items-center justify-center space-x-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span id="btnText" class="text-base">Search Vehicle</span>
+          <i id="btnIcon" data-lucide="arrow-right" class="w-5 h-5"></i>
+          <div id="btnSpinner" class="hidden w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+        </button>
       </form>
     </section>
 
-    <!-- WARNING / FAILED SEARCH CARD -->
-    <div id="errorCard" class="hidden max-w-xl mx-auto bg-red-950/30 border border-red-500/40 rounded-2xl p-6 backdrop-blur-md shadow-2xl shadow-red-950/50">
-      <div class="flex items-start space-x-4">
-        <div class="p-3 bg-red-500/10 rounded-xl text-red-400 border border-red-500/20 flex-shrink-0">
-          <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+    <!-- ERROR / NO DATA CARD -->
+    <section id="errorState" class="hidden w-full max-w-2xl my-4">
+      <div class="glass-card border-red-500/40 bg-red-950/20 p-6 rounded-2xl shadow-neon-red flex flex-col sm:flex-row items-center text-center sm:text-left gap-4">
+        <div class="p-3 bg-red-500/10 rounded-xl text-red-400 shrink-0 border border-red-500/20">
+          <i data-lucide="alert-triangle" class="w-8 h-8"></i>
         </div>
-        <div class="space-y-1">
-          <h3 class="text-lg font-bold text-red-200">No Records Found</h3>
-          <p id="errorMessage" class="text-sm text-red-300/80 leading-relaxed">
+        <div>
+          <h3 class="text-lg font-bold text-red-400 mb-1">Vehicle Details Not Found</h3>
+          <p id="errorMessage" class="text-sm text-red-200/80">
             No records found for this vehicle number. Please double check and try again.
           </p>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- DATA DISPLAY DISPLAY SECTION -->
-    <div id="resultsContainer" class="hidden space-y-8">
+    <!-- RESULTS DISPLAY CONTAINER -->
+    <section id="resultsSection" class="hidden w-full space-y-6">
 
-      <!-- HERO BANNER CARD -->
-      <section class="bg-gradient-to-b from-slate-800/80 to-slate-900/80 border border-slate-700/60 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-xl relative overflow-hidden">
-        <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
-          <div class="flex items-center space-x-5">
-            <div class="w-16 h-16 sm:w-20 sm:h-20 bg-slate-900/90 border border-slate-700/80 rounded-2xl flex items-center justify-center p-3 shadow-inner flex-shrink-0">
-              <img id="makeLogo" src="" alt="Brand Logo" class="max-h-full max-w-full object-contain hidden" />
-              <i id="makeFallbackIcon" data-lucide="car" class="w-8 h-8 text-slate-500"></i>
+      <!-- HERO DETAILS CARD -->
+      <div class="glass-card p-6 sm:p-8 rounded-2xl relative overflow-hidden border border-emerald-500/20 shadow-neon-emerald">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+          
+          <div class="flex items-start sm:items-center space-x-4">
+            <!-- Brand Logo Container -->
+            <div id="logoWrapper" class="p-3 bg-slate-900 border border-slate-700 rounded-xl shrink-0 hidden sm:flex items-center justify-center w-16 h-16">
+              <img id="makeLogo" src="" alt="Brand Logo" class="max-w-full max-h-full object-contain" onError="document.getElementById('logoWrapper').classList.add('hidden')" />
             </div>
             <div>
-              <div class="flex items-center space-x-3 mb-1">
-                <h2 id="heroTitle" class="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight"></h2>
-                <span id="heroRcStatus" class="px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider"></span>
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <span id="rcNumber" class="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-400">NA</span>
+                <span id="rcStatus" class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 uppercase tracking-wider">
+                  ACTIVE
+                </span>
               </div>
-              <p id="heroMakerDesc" class="text-sm text-slate-400 font-medium"></p>
-              <p id="heroRcNumber" class="text-xs font-mono text-emerald-400 mt-1 font-semibold tracking-widest"></p>
+              <h2 id="heroTitle" class="text-lg sm:text-xl font-bold text-slate-100 uppercase">VEHICLE DETAILS</h2>
+              <p id="makerDesc" class="text-sm text-slate-400 mt-0.5">NA</p>
             </div>
           </div>
-          
-          <div class="flex flex-wrap sm:flex-col gap-2 border-t sm:border-t-0 sm:border-l border-slate-700/60 pt-4 sm:pt-0 sm:pl-6 w-full sm:w-auto">
-            <div>
-              <span class="text-xs text-slate-500 block">Vehicle Category</span>
-              <span id="heroCategory" class="text-sm font-semibold text-slate-200"></span>
+
+          <div class="flex flex-wrap md:flex-col items-start md:items-end gap-2 border-t md:border-t-0 border-slate-800 pt-4 md:pt-0">
+            <div class="text-left md:text-right">
+              <p class="text-xs text-slate-500 uppercase tracking-wider">Category</p>
+              <p id="vehicleCategory" class="text-sm font-semibold text-slate-200">NA</p>
             </div>
-            <div>
-              <span class="text-xs text-slate-500 block">Fuel / Norms</span>
-              <span id="heroFuelNorms" class="text-sm font-semibold text-slate-200"></span>
+            <div class="text-left md:text-right mt-1">
+              <p class="text-xs text-slate-500 uppercase tracking-wider">Fuel & Norms</p>
+              <p id="fuelNorms" class="text-sm font-semibold text-cyan-400">NA</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- GRID OF DETAILS CARDS -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+        <!-- CARD 1: OWNER & REGISTRATION -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center space-x-2 text-emerald-400 font-semibold mb-4 pb-2 border-b border-slate-800">
+              <i data-lucide="user" class="w-5 h-5"></i>
+              <h3>Owner & Registration</h3>
+            </div>
+            <dl class="space-y-3 text-sm">
+              <div>
+                <dt class="text-xs text-slate-500">Owner Name</dt>
+                <dd id="ownerName" class="font-medium text-slate-200">NA</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Father's Name</dt>
+                <dd id="fatherName" class="font-medium text-slate-200">NA</dd>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Owner Serial No.</dt>
+                  <dd id="ownerSerial" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Year of Purchase</dt>
+                  <dd id="purchaseYear" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Registration Date</dt>
+                <dd id="regDate" class="font-medium text-slate-200">NA</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Registered RTO</dt>
+                <dd id="registeredRto" class="font-medium text-slate-200">NA</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- CARD 2: TECHNICAL SPECIFICATIONS -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center space-x-2 text-cyan-400 font-semibold mb-4 pb-2 border-b border-slate-800">
+              <i data-lucide="cpu" class="w-5 h-5"></i>
+              <h3>Technical Specifications</h3>
+            </div>
+            <dl class="space-y-3 text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Chassis Number</dt>
+                  <dd id="chassisNo" class="font-mono text-slate-200 break-all">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Engine Number</dt>
+                  <dd id="engineNo" class="font-mono text-slate-200 break-all">NA</dd>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Cubic Capacity (CC)</dt>
+                  <dd id="cubicCapacity" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">No. of Cylinders</dt>
+                  <dd id="cylinders" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Vehicle Color</dt>
+                  <dd id="vehicleColor" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Mfg Month/Year</dt>
+                  <dd id="mfgDate" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Unladen Weight</dt>
+                  <dd id="unladenWeight" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Gross Weight</dt>
+                  <dd id="grossWeight" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- CARD 3: BODY, CAPACITY & FINANCE -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center space-x-2 text-emerald-400 font-semibold mb-4 pb-2 border-b border-slate-800">
+              <i data-lucide="layers" class="w-5 h-5"></i>
+              <h3>Body, Capacity & Finance</h3>
+            </div>
+            <dl class="space-y-3 text-sm">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Seating Capacity</dt>
+                  <dd id="seatingCap" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Sleeper Capacity</dt>
+                  <dd id="sleeperCap" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Wheelbase</dt>
+                  <dd id="wheelbase" class="font-medium text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Body Type</dt>
+                  <dd id="bodyType" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div class="pt-2 border-t border-slate-800/60">
+                <dt class="text-xs text-slate-500">Finance Status</dt>
+                <dd id="financeStatus" class="font-semibold text-emerald-400">NA</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Financer Name</dt>
+                <dd id="financerName" class="font-medium text-slate-200">NA</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- CARD 4: INSURANCE & PUCC -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between md:col-span-2 lg:col-span-1">
+          <div>
+            <div class="flex items-center space-x-2 text-cyan-400 font-semibold mb-4 pb-2 border-b border-slate-800">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+              <h3>Insurance & Compliance</h3>
+            </div>
+            <dl class="space-y-3 text-sm">
+              <div>
+                <dt class="text-xs text-slate-500">Insurance Company</dt>
+                <dd id="insuranceCompany" class="font-medium text-slate-200">NA</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Insurance Policy No.</dt>
+                <dd id="insurancePolicy" class="font-mono text-slate-200">NA</dd>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">Insurance Valid Upto</dt>
+                  <dd id="insuranceUpto" class="font-medium text-emerald-400">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">Fitness Valid Upto</dt>
+                  <dd id="fitnessUpto" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <dt class="text-xs text-slate-500">PUCC Number</dt>
+                  <dd id="puccNumber" class="font-mono text-slate-200">NA</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-slate-500">PUCC Valid Upto</dt>
+                  <dd id="puccUpto" class="font-medium text-slate-200">NA</dd>
+                </div>
+              </div>
+              <div>
+                <dt class="text-xs text-slate-500">Tax Paid Upto</dt>
+                <dd id="taxUpto" class="font-medium text-slate-200">NA</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <!-- CARD 5: ADDRESS DETAILS -->
+        <div class="glass-card p-6 rounded-2xl flex flex-col justify-between md:col-span-2 lg:col-span-2">
+          <div>
+            <div class="flex items-center space-x-2 text-emerald-400 font-semibold mb-4 pb-2 border-b border-slate-800">
+              <i data-lucide="map-pin" class="w-5 h-5"></i>
+              <h3>Registered Addresses</h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                <dt class="text-xs text-slate-500 mb-1">Present Address</dt>
+                <dd id="presentAddress" class="font-medium text-slate-200 leading-relaxed">NA</dd>
+              </div>
+              <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                <dt class="text-xs text-slate-500 mb-1">Permanent Address</dt>
+                <dd id="permanentAddress" class="font-medium text-slate-200 leading-relaxed">NA</dd>
+              </div>
             </div>
           </div>
         </div>
-      </section>
-
-      <!-- DATA GRID SECTIONS -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        <!-- SECTION 1: Ownership & Registration -->
-        <section class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
-          <div class="flex items-center space-x-3 border-b border-slate-700/50 pb-3">
-            <i data-lucide="user" class="w-5 h-5 text-emerald-400"></i>
-            <h3 class="font-bold text-slate-200 text-base">Ownership & Registration</h3>
-          </div>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt class="text-xs text-slate-400">Owner Name</dt>
-              <dd id="ownerName" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Father's Name</dt>
-              <dd id="fatherName" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Owner Serial No.</dt>
-              <dd id="ownerNumber" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Registration Date</dt>
-              <dd id="registrationDate" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Registered RTO</dt>
-              <dd id="registeredAt" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Year of Purchase</dt>
-              <dd id="yearOfPurchase" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-          </dl>
-        </section>
-
-        <!-- SECTION 2: Communication & Address -->
-        <section class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
-          <div class="flex items-center space-x-3 border-b border-slate-700/50 pb-3">
-            <i data-lucide="map-pin" class="w-5 h-5 text-cyan-400"></i>
-            <h3 class="font-bold text-slate-200 text-base">Communication & Address</h3>
-          </div>
-          <dl class="space-y-4 text-sm">
-            <div>
-              <dt class="text-xs text-slate-400">Present Address</dt>
-              <dd id="presentAddress" class="font-medium text-slate-200 mt-0.5 leading-relaxed"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Permanent Address</dt>
-              <dd id="permanentAddress" class="font-medium text-slate-200 mt-0.5 leading-relaxed"></dd>
-            </div>
-          </dl>
-        </section>
-
-        <!-- SECTION 3: Technical Specifications -->
-        <section class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm space-y-4 md:col-span-2">
-          <div class="flex items-center space-x-3 border-b border-slate-700/50 pb-3">
-            <i data-lucide="cpu" class="w-5 h-5 text-emerald-400"></i>
-            <h3 class="font-bold text-slate-200 text-base">Technical Specifications</h3>
-          </div>
-          <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
-            <div>
-              <dt class="text-xs text-slate-400">Chassis Number</dt>
-              <dd id="chassisNumber" class="font-mono font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Engine Number</dt>
-              <dd id="engineNumber" class="font-mono font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Cubic Capacity (CC)</dt>
-              <dd id="cubicCapacity" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">No. of Cylinders</dt>
-              <dd id="noCylinders" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Mfg Month/Year</dt>
-              <dd id="manufacturingDate" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Vehicle Color</dt>
-              <dd id="color" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Unladen Weight</dt>
-              <dd id="unladenWeight" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Gross Weight</dt>
-              <dd id="grossWeight" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Wheelbase</dt>
-              <dd id="wheelbase" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Seating Capacity</dt>
-              <dd id="seatCapacity" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Sleeper Capacity</dt>
-              <dd id="sleeperCapacity" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Body Type</dt>
-              <dd id="bodyType" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-          </dl>
-        </section>
-
-        <!-- SECTION 4: Insurance & Financial Details -->
-        <section class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
-          <div class="flex items-center space-x-3 border-b border-slate-700/50 pb-3">
-            <i data-lucide="shield-check" class="w-5 h-5 text-cyan-400"></i>
-            <h3 class="font-bold text-slate-200 text-base">Insurance & Finance</h3>
-          </div>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt class="text-xs text-slate-400">Financed Status</dt>
-              <dd id="financedStatus" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Financer Name</dt>
-              <dd id="financer" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Insurance Company</dt>
-              <dd id="insuranceCompany" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Insurance Policy No.</dt>
-              <dd id="insurancePolicyNumber" class="font-semibold text-slate-100 mt-0.5 font-mono"></dd>
-            </div>
-            <div class="sm:col-span-2">
-              <dt class="text-xs text-slate-400">Insurance Valid Upto</dt>
-              <dd id="insuranceUpto" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-          </dl>
-        </section>
-
-        <!-- SECTION 5: Fitness, PUCC & Tax Compliance -->
-        <section class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
-          <div class="flex items-center space-x-3 border-b border-slate-700/50 pb-3">
-            <i data-lucide="file-check" class="w-5 h-5 text-emerald-400"></i>
-            <h3 class="font-bold text-slate-200 text-base">Fitness & Compliance</h3>
-          </div>
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt class="text-xs text-slate-400">Fitness Valid Upto</dt>
-              <dd id="fitUpTo" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">PUCC Number</dt>
-              <dd id="puccNumber" class="font-semibold text-slate-100 mt-0.5 font-mono"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">PUCC Valid Upto</dt>
-              <dd id="puccUpto" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Tax Paid Upto</dt>
-              <dd id="taxPaidUpto" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">Blacklist Status</dt>
-              <dd id="blacklistStatus" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-            <div>
-              <dt class="text-xs text-slate-400">NOC Details</dt>
-              <dd id="nocDetails" class="font-semibold text-slate-100 mt-0.5"></dd>
-            </div>
-          </dl>
-        </section>
 
       </div>
-    </div>
+    </section>
 
   </main>
 
   <!-- FOOTER -->
-  <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500 mt-auto">
-    <p>© All Rights Reserved | Vikas Mishra</p>
+  <footer class="border-t border-slate-800/80 bg-slate-950 py-6 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+      <p>© All Rights Reserved | Vikas Mishra</p>
+    </div>
   </footer>
 
-  <!-- JAVASCRIPT LOGIC -->
+  <!-- SCRIPT LOGIC -->
   <script>
     // Initialize Lucide Icons
     lucide.createIcons();
 
-    // DOM Elements
-    const vehicleInput = document.getElementById('vehicleInput');
+    // DOM References
     const searchForm = document.getElementById('searchForm');
+    const vehicleInput = document.getElementById('vehicleInput');
     const searchBtn = document.getElementById('searchBtn');
     const btnText = document.getElementById('btnText');
+    const btnIcon = document.getElementById('btnIcon');
     const btnSpinner = document.getElementById('btnSpinner');
-    const errorCard = document.getElementById('errorCard');
+
+    const errorState = document.getElementById('errorState');
     const errorMessage = document.getElementById('errorMessage');
-    const resultsContainer = document.getElementById('resultsContainer');
+    const resultsSection = document.getElementById('resultsSection');
 
-    // Input Formatting: Auto strip spaces/hyphens and convert to UPPERCASE
+    // Input sanitization: Strip spaces, hyphens, and convert to uppercase
     vehicleInput.addEventListener('input', (e) => {
-      e.target.value = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      e.target.value = e.target.value.replace(/[\s-]/g, '').toUpperCase();
     });
-
-    // Helper function for safe string value extraction
-    function getVal(val, suffix = '') {
-      if (val === null || val === undefined || val === '' || val === 'null' || val === 'undefined') {
-        return 'NA';
-      }
-      return `${val}${suffix}`;
-    }
-
-    // Toggle Loading State
-    function setLoading(isLoading) {
-      searchBtn.disabled = isLoading;
-      if (isLoading) {
-        btnText.classList.add('hidden');
-        btnSpinner.classList.remove('hidden');
-      } else {
-        btnText.classList.remove('hidden');
-        btnSpinner.classList.add('hidden');
-      }
-    }
-
-    // Exact CORS Fix & AllOrigins Proxy Fetch Logic
-    async function fetchVehicleData(cleanRegNo) {
-      const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-      try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Network proxy response failed");
-        
-        const json = await response.json();
-        if (!json.contents) throw new Error("Empty response from proxy");
-
-        // Parse the JSON string wrapped inside allorigins contents
-        let apiData = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
-
-        if (apiData && apiData.data) {
-          return apiData.data;
-        } else if (apiData && apiData.rc_number) {
-          return apiData;
-        } else {
-          throw new Error("No vehicle details found for this number");
-        }
-      } catch (error) {
-        console.error("Fetch Execution Error:", error);
-        throw error;
-      }
-    }
-
-    // Dynamic Rendering Function
-    function renderVehicleData(data) {
-      // 1. Hero Title
-      const makeName = data.makeData?.v_make_display_name || '';
-      const modelName = data.maker_model || data.modelData?.v_model_name || '';
-      const fullTitle = `${makeName} ${modelName}`.trim() || 'VEHICLE DETAILS';
-      document.getElementById('heroTitle').textContent = fullTitle;
-
-      // 2. RC Display Number
-      document.getElementById('heroRcNumber').textContent = `RC: ${getVal(data.rc_number)}`;
-
-      // Maker Description & Status
-      document.getElementById('heroMakerDesc').textContent = getVal(data.maker_description);
-      
-      const statusBadge = document.getElementById('heroRcStatus');
-      const status = (data.rc_status || 'UNKNOWN').toUpperCase();
-      statusBadge.textContent = status;
-      if (status === 'ACTIVE') {
-        statusBadge.className = 'px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-      } else {
-        statusBadge.className = 'px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20';
-      }
-
-      // Brand Logo Handling
-      const logoImg = document.getElementById('makeLogo');
-      const fallbackIcon = document.getElementById('makeFallbackIcon');
-      if (data.makeData?.v_make_logo_url) {
-        logoImg.src = data.makeData.v_make_logo_url;
-        logoImg.classList.remove('hidden');
-        fallbackIcon.classList.add('hidden');
-        logoImg.onerror = () => {
-          logoImg.classList.add('hidden');
-          fallbackIcon.classList.remove('hidden');
-        };
-      } else {
-        logoImg.classList.add('hidden');
-        fallbackIcon.classList.remove('hidden');
-      }
-
-      // 3. Vehicle Category
-      document.getElementById('heroCategory').textContent = getVal(data.vehicle_category_description || data.vehicle_category);
-
-      // 4. Fuel / Norms
-      const fuel = data.fuel_type ? data.fuel_type : 'NA';
-      const norms = data.norms_type ? ` (${data.norms_type})` : '';
-      document.getElementById('heroFuelNorms').textContent = `${fuel}${norms}`;
-
-      // 5-10. Ownership & Registration
-      document.getElementById('ownerName').textContent = getVal(data.owner_name);
-      document.getElementById('fatherName').textContent = getVal(data.father_name);
-      document.getElementById('ownerNumber').textContent = getVal(data.owner_number);
-      document.getElementById('registrationDate').textContent = getVal(data.registration_date);
-      document.getElementById('registeredAt').textContent = getVal(data.registered_at);
-      document.getElementById('yearOfPurchase').textContent = getVal(data.yearofPurchase);
-
-      // 11-12. Addresses
-      document.getElementById('presentAddress').textContent = getVal(data.present_address);
-      document.getElementById('permanentAddress').textContent = getVal(data.permanent_address);
-
-      // 13-24. Technical Specifications
-      document.getElementById('chassisNumber').textContent = getVal(data.vehicle_chasi_number);
-      document.getElementById('engineNumber').textContent = getVal(data.vehicle_engine_number);
-      document.getElementById('cubicCapacity').textContent = data.cubic_capacity ? `${data.cubic_capacity} cc` : 'NA';
-      document.getElementById('noCylinders').textContent = getVal(data.no_cylinders);
-      document.getElementById('manufacturingDate').textContent = getVal(data.manufacturing_date);
-      document.getElementById('color').textContent = getVal(data.color);
-      document.getElementById('unladenWeight').textContent = data.unladen_weight ? `${data.unladen_weight} kg` : 'NA';
-      document.getElementById('grossWeight').textContent = data.vehicle_gross_weight ? `${data.vehicle_gross_weight} kg` : 'NA';
-      document.getElementById('wheelbase').textContent = data.wheelbase ? `${data.wheelbase} mm` : 'NA';
-      document.getElementById('seatCapacity').textContent = getVal(data.seat_capacity);
-      document.getElementById('sleeperCapacity').textContent = getVal(data.sleeper_capacity);
-      document.getElementById('bodyType').textContent = getVal(data.body_type);
-
-      // Finance & Insurance Details
-      const isFinanced = data.financed === true || String(data.financed).toLowerCase() === 'true';
-      document.getElementById('financedStatus').textContent = isFinanced ? "FINANCED" : "NO FINANCE / CASH";
-      document.getElementById('financer').textContent = getVal(data.financer);
-      document.getElementById('insuranceCompany').textContent = getVal(data.insurance_company);
-      document.getElementById('insurancePolicyNumber').textContent = getVal(data.insurance_policy_number);
-      document.getElementById('insuranceUpto').textContent = getVal(data.insurance_upto);
-
-      // Fitness & Compliance
-      document.getElementById('fitUpTo').textContent = getVal(data.fit_up_to);
-      document.getElementById('puccNumber').textContent = getVal(data.pucc_number);
-      document.getElementById('puccUpto').textContent = getVal(data.pucc_upto);
-      document.getElementById('taxPaidUpto').textContent = getVal(data.tax_paid_upto || data.tax_upto);
-      document.getElementById('blacklistStatus').textContent = getVal(data.blacklist_status);
-      document.getElementById('nocDetails').textContent = getVal(data.noc_details);
-
-      // Refresh Lucide Icons
-      lucide.createIcons();
-    }
 
     // Form Submit Listener
     searchForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
-      const rawInput = vehicleInput.value;
-      const cleanRegNo = rawInput.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-
+      const cleanRegNo = vehicleInput.value.trim();
       if (!cleanRegNo) return;
 
-      // Reset UI state
-      errorCard.classList.add('hidden');
-      resultsContainer.classList.add('hidden');
       setLoading(true);
+      hideError();
+      hideResults();
 
       try {
-        const vehicleData = await fetchVehicleData(cleanRegNo);
-        renderVehicleData(vehicleData);
-        resultsContainer.classList.remove('hidden');
+        const data = await fetchVehicleData(cleanRegNo);
+        renderVehicleData(data);
+        showResults();
       } catch (err) {
-        console.error("Search Error:", err);
-        errorMessage.textContent = "No records found for this vehicle number. Please double check and try again.";
-        errorCard.classList.remove('hidden');
+        console.error("Lookup Failed:", err);
+        showError("No records found for this vehicle number. Please double check and try again.");
       } finally {
         setLoading(false);
       }
     });
+
+    // Sequential Multi-Proxy Fetch Engine
+    async function fetchVehicleData(cleanRegNo) {
+      const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
+      
+      const endpoints = [
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+        targetUrl
+      ];
+
+      for (const url of endpoints) {
+        try {
+          console.log("Attempting fetch from:", url);
+          
+          // Timeout controller per attempt
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) continue;
+
+          const rawText = await response.text();
+          let parsed = null;
+
+          try {
+            parsed = JSON.parse(rawText);
+          } catch (e) {
+            continue;
+          }
+
+          // Unwrap AllOrigins wrapper if present
+          if (parsed && parsed.contents) {
+            try {
+              parsed = typeof parsed.contents === 'string' ? JSON.parse(parsed.contents) : parsed.contents;
+            } catch (e) {
+              parsed = parsed.contents;
+            }
+          }
+
+          // Validate payload structure
+          if (parsed && parsed.data) {
+            return parsed.data;
+          } else if (parsed && parsed.status === "success" && parsed.data) {
+            return parsed.data;
+          } else if (parsed && parsed.rc_number) {
+            return parsed;
+          }
+        } catch (err) {
+          console.warn("Endpoint failed:", url, err);
+        }
+      }
+
+      throw new Error("No vehicle details could be retrieved.");
+    }
+
+    // Helper for safe value rendering
+    function val(value, suffix = '') {
+      if (value === null || value === undefined) return 'NA';
+      const str = String(value).trim();
+      if (str === '' || str.toLowerCase() === 'null' || str.toLowerCase() === 'undefined') return 'NA';
+      return suffix ? `${str} ${suffix}` : str;
+    }
+
+    // Dynamic DOM Renderer
+    function renderVehicleData(data) {
+      // Make Logo handling
+      const logoUrl = data.makeData?.v_make_logo_url;
+      const logoWrapper = document.getElementById('logoWrapper');
+      const makeLogo = document.getElementById('makeLogo');
+      
+      if (logoUrl) {
+        makeLogo.src = logoUrl;
+        logoWrapper.classList.remove('hidden');
+        logoWrapper.classList.add('flex');
+      } else {
+        logoWrapper.classList.add('hidden');
+        logoWrapper.classList.remove('flex');
+      }
+
+      // Hero Title Mapping
+      const brandName = data.makeData?.v_make_display_name || '';
+      const modelName = data.maker_model || data.modelData?.v_model_name || '';
+      const fullTitle = `${brandName} ${modelName}`.trim();
+      document.getElementById('heroTitle').innerText = fullTitle !== '' ? fullTitle : "VEHICLE DETAILS";
+
+      // Status Badge Styling
+      const statusEl = document.getElementById('rcStatus');
+      const rcStatusText = val(data.rc_status);
+      statusEl.innerText = rcStatusText;
+      if (rcStatusText.toUpperCase() === 'ACTIVE') {
+        statusEl.className = "px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 uppercase tracking-wider";
+      } else {
+        statusEl.className = "px-3 py-1 text-xs font-bold rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 uppercase tracking-wider";
+      }
+
+      // Mapping all DOM elements
+      document.getElementById('rcNumber').innerText = val(data.rc_number);
+      document.getElementById('makerDesc').innerText = val(data.maker_description);
+      document.getElementById('vehicleCategory').innerText = val(data.vehicle_category_description || data.vehicle_category);
+      
+      const fuel = val(data.fuel_type);
+      const norms = val(data.norms_type);
+      document.getElementById('fuelNorms').innerText = (fuel === 'NA' && norms === 'NA') ? 'NA' : `${fuel} (${norms})`;
+
+      // Owner Card
+      document.getElementById('ownerName').innerText = val(data.owner_name);
+      document.getElementById('fatherName').innerText = val(data.father_name);
+      document.getElementById('ownerSerial').innerText = val(data.owner_number);
+      document.getElementById('regDate').innerText = val(data.registration_date);
+      document.getElementById('registeredRto').innerText = val(data.registered_at);
+      document.getElementById('purchaseYear').innerText = val(data.yearofPurchase);
+
+      // Technical Specs
+      document.getElementById('chassisNo').innerText = val(data.vehicle_chasi_number);
+      document.getElementById('engineNo').innerText = val(data.vehicle_engine_number);
+      document.getElementById('cubicCapacity').innerText = data.cubic_capacity ? val(data.cubic_capacity, 'cc') : 'NA';
+      document.getElementById('cylinders').innerText = val(data.no_cylinders);
+      document.getElementById('mfgDate').innerText = val(data.manufacturing_date);
+      document.getElementById('vehicleColor').innerText = val(data.color);
+      document.getElementById('unladenWeight').innerText = data.unladen_weight ? val(data.unladen_weight, 'kg') : 'NA';
+      document.getElementById('grossWeight').innerText = data.vehicle_gross_weight ? val(data.vehicle_gross_weight, 'kg') : 'NA';
+
+      // Capacity & Finance
+      document.getElementById('wheelbase').innerText = data.wheelbase ? val(data.wheelbase, 'mm') : 'NA';
+      document.getElementById('seatingCap').innerText = val(data.seat_capacity);
+      document.getElementById('sleeperCap').innerText = val(data.sleeper_capacity);
+      document.getElementById('bodyType').innerText = val(data.body_type);
+      
+      // Finance logic
+      document.getElementById('financeStatus').innerText = data.financed ? "FINANCED" : "NO FINANCE / CASH";
+      document.getElementById('financerName').innerText = val(data.financer);
+
+      // Insurance & PUCC
+      document.getElementById('insuranceCompany').innerText = val(data.insurance_company);
+      document.getElementById('insurancePolicy').innerText = val(data.insurance_policy_number);
+      document.getElementById('insuranceUpto').innerText = val(data.insurance_upto);
+      document.getElementById('fitnessUpto').innerText = val(data.fit_up_to);
+      document.getElementById('puccNumber').innerText = val(data.pucc_number);
+      document.getElementById('puccUpto').innerText = val(data.pucc_upto);
+      document.getElementById('taxUpto').innerText = val(data.tax_paid_upto || data.tax_upto);
+
+      // Address
+      document.getElementById('presentAddress').innerText = val(data.present_address);
+      document.getElementById('permanentAddress').innerText = val(data.permanent_address);
+    }
+
+    // UI State Helpers
+    function setLoading(isLoading) {
+      if (isLoading) {
+        searchBtn.disabled = true;
+        btnText.innerText = "Searching...";
+        btnIcon.classList.add('hidden');
+        btnSpinner.classList.remove('hidden');
+      } else {
+        searchBtn.disabled = false;
+        btnText.innerText = "Search Vehicle";
+        btnIcon.classList.remove('hidden');
+        btnSpinner.classList.add('hidden');
+      }
+    }
+
+    function showError(msg) {
+      if (msg) errorMessage.innerText = msg;
+      errorState.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorState.classList.add('hidden');
+    }
+
+    function showResults() {
+      resultsSection.classList.remove('hidden');
+      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function hideResults() {
+      resultsSection.classList.add('hidden');
+    }
   </script>
 </body>
 </html>
