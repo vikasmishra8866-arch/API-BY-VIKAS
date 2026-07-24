@@ -102,7 +102,7 @@
           <input
             type="text"
             id="vehicleInput"
-            placeholder="e.g. MH01AB1234 or DL3CCE1234"
+            placeholder="e.g. MH01AB1234 or UP32FT8571"
             required
             maxlength="15"
             class="w-full pl-11 pr-4 py-4 bg-slate-950 border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-white placeholder-slate-500 font-mono tracking-wider uppercase text-lg transition duration-200 shadow-inner"
@@ -427,62 +427,38 @@
       }
     });
 
-    // Sequential Multi-Proxy Fetch Engine
+    // Clean Direct Fetch Engine
     async function fetchVehicleData(cleanRegNo) {
       const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
-      
-      const endpoints = [
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-        `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-        targetUrl
-      ];
 
-      for (const url of endpoints) {
-        try {
-          console.log("Attempting fetch from:", url);
-          
-          // Timeout controller per attempt
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-          const response = await fetch(url, { signal: controller.signal });
-          clearTimeout(timeoutId);
-
-          if (!response.ok) continue;
-
-          const rawText = await response.text();
-          let parsed = null;
-
-          try {
-            parsed = JSON.parse(rawText);
-          } catch (e) {
-            continue;
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
           }
+        });
 
-          // Unwrap AllOrigins wrapper if present
-          if (parsed && parsed.contents) {
-            try {
-              parsed = typeof parsed.contents === 'string' ? JSON.parse(parsed.contents) : parsed.contents;
-            } catch (e) {
-              parsed = parsed.contents;
-            }
-          }
-
-          // Validate payload structure
-          if (parsed && parsed.data) {
-            return parsed.data;
-          } else if (parsed && parsed.status === "success" && parsed.data) {
-            return parsed.data;
-          } else if (parsed && parsed.rc_number) {
-            return parsed;
-          }
-        } catch (err) {
-          console.warn("Endpoint failed:", url, err);
+        if (!response.ok) {
+          throw new Error("API response was not ok");
         }
-      }
 
-      throw new Error("No vehicle details could be retrieved.");
+        const json = await response.json();
+
+        // Handle different response structures
+        if (json && json.data) {
+          return json.data;
+        } else if (json && json.status === "success" && json.data) {
+          return json.data;
+        } else if (json && json.rc_number) {
+          return json;
+        } else {
+          throw new Error("Invalid data format received");
+        }
+      } catch (error) {
+        console.error("Fetch failed:", error);
+        throw error;
+      }
     }
 
     // Helper for safe value rendering
