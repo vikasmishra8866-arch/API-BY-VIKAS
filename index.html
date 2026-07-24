@@ -432,7 +432,8 @@
       const targetUrl = `https://randkikichut.vercel.app/?vehicle_number=${cleanRegNo}`;
 
       try {
-        const response = await fetch(targetUrl, {
+        const response = await fetch(`/api/vehicle?vehicle_number=${cleanRegNo}`);
+const json = await response.json();
           method: 'GET',
           headers: {
             'Accept': 'application/json'
