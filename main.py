@@ -210,10 +210,27 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     else:
         maker_modal = maker if maker != "NA" else model
 
+    # Smart Vehicle Category Detection (Fixes 2WN/4WN issue)
+    raw_cat = clean_val(a1_res.get("vehicleCategory"), a2_data.get("vehicleCategory"))
+    if raw_cat == "NA":
+        vh_upper = vh_class.upper()
+        if any(k in vh_upper for k in ["CAR", "LMV", "SUV", "MOTOR CAR", "QUADRICYCLE", "GOODS"]):
+            raw_cat = "4WN"
+        elif any(k in vh_upper for k in ["SCOOTER", "M-CYCLE", "MOTORCYCLE", "TWO WHEELER", "2WN"]):
+            raw_cat = "2WN"
+        else:
+            raw_cat = "4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN"
+
+    # RTO & State Fallback Logic (Fixes missing state when RTO has 'Surat, Gujarat')
+    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
+    state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
+    if state_val == "NA" and rto_val != "NA" and "," in rto_val:
+        state_val = rto_val.split(",")[-1].strip()
+
     data_payload = {
         "id": 2141636,
         "status": "SUCCESS",
-        "rto": clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority")),
+        "rto": rto_val,
         "reg_no": vehicle_no.upper(),
         "pb_vehicle_code": "0",
         "regn_dt": reg_date,
@@ -224,7 +241,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "owner_2_name": out_owner_2,
         "owner_transfer_detected": owner_transfer_detected,
         "vh_class": vh_class,
-        "vehicle_category": clean_val(a1_res.get("vehicleCategory"), "2WN"),
+        "vehicle_category": raw_cat,
         "vehicle_model": model,
         "variant": variant,
         "is_commercial": is_commercial,
@@ -232,7 +249,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "maker": maker,
         "vehicle_age": vehicle_age,
         "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
-        "state": clean_val(a1_res.get("state")),
+        "state": state_val,
         "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
         "puc_no": puc_no,
         "puc_upto": puc_upto,
