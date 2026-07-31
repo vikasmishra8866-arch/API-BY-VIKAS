@@ -116,6 +116,7 @@ async def fetch_api_1(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, A
         url = f"{API1_BASE_URL}?regn_no={vehicle_no}"
         headers = {"ngrok-skip-browser-warning": "true"}
         res = await client.get(url, headers=headers, timeout=12.0)
+        print(f"[API 1 Status]: {res.status_code}")
         if res.status_code == 200:
             return res.json()
     except Exception as e:
@@ -127,6 +128,7 @@ async def fetch_api_2(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, A
     try:
         url = f"{API2_BASE_URL}/{vehicle_no}"
         res = await client.get(url, timeout=12.0)
+        print(f"[API 2 Status]: {res.status_code}")
         if res.status_code == 200:
             return res.json()
     except Exception as e:
@@ -188,7 +190,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
     is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
 
-    # Deep-Check Fallbacks for Financer, PUC & NOC (Added smoothly)
+    # Financer & Hypothecation Check
     financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
     raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
     if raw_financed != "NA":
@@ -196,8 +198,17 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     else:
         is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
+    # PUC Details Fallback
     puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
     puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"))
+
+    # Clean Maker-Model combination
+    if maker == "NA" and model == "NA":
+        maker_modal = "NA"
+    elif maker != "NA" and model != "NA":
+        maker_modal = f"{maker} {model}".strip()
+    else:
+        maker_modal = maker if maker != "NA" else model
 
     data_payload = {
         "id": 2141636,
@@ -229,7 +240,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "financer_name": financer,
         "is_financed": is_financed_status,
         "source": "PARIVAHAN_SERVICE_GATEWAY",
-        "maker_modal": f"{maker} {model}".strip(),
+        "maker_modal": maker_modal,
         "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
         "address": final_address,
         "address_1": out_addr_1,
