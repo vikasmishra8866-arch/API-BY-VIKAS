@@ -166,6 +166,10 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
     addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
+    # Financer details extraction across APIs
+    financer_api1 = clean_val(a1_res.get("rcFinancer"), a1_veh.get("financer_name"))
+    financer_api2 = clean_val(a2_data.get("financerName"))
+
     # If 2 or more distinct names are detected OR owner count is explicitly 2+, mark transfer
     if len(names_list) >= 2 or sr_num >= 2:
         owner_transfer_detected = True
@@ -193,6 +197,17 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         else:
             final_address = out_addr_1 if out_addr_1 != "NA" else out_addr_2
 
+        # Financer Mapping according to Owner Count / Transfer
+        fin1 = financer_api1 if financer_api1 != "NA" else "NA"
+        fin2 = financer_api2 if (financer_api2 != "NA" and financer_api2 != financer_api1) else "NA"
+
+        if fin1 != "NA" or fin2 != "NA":
+            financer = f"1st Owner Financer: {fin1} | 2nd Owner Financer: {fin2}"
+            is_financed_status = "True"
+        else:
+            financer = "NA"
+            is_financed_status = "False"
+
     else:
         owner_transfer_detected = False
         out_owner_1 = names_list[0] if names_list else "NA"
@@ -206,6 +221,14 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
 
         out_addr_1 = final_address
         out_addr_2 = "NA"
+
+        # Single Owner Financer Logic
+        financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
+        raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
+        if raw_financed != "NA":
+            is_financed_status = raw_financed
+        else:
+            is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
     reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
     vehicle_age = clean_val(a1_res.get("vehicleAge"))
@@ -221,14 +244,6 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
 
     raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
     is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
-
-    # Financer & Hypothecation Check
-    financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
-    raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
-    if raw_financed != "NA":
-        is_financed_status = raw_financed
-    else:
-        is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
     # PUC Details Fallback
     puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
