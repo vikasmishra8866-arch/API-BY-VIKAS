@@ -2,10 +2,12 @@ import asyncio
 from typing import Any, Dict
 import os
 import re
+from datetime import datetime
 from difflib import SequenceMatcher
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import uvicorn
 
 app = FastAPI(title="Parivahan Vehicle Details Master API")
@@ -37,7 +39,6 @@ def clean_name_for_comparison(name: str) -> str:
     """Cleans owner name for accurate string comparison."""
     if not name or name == "NA":
         return ""
-    # Remove titles, punctuation, and extra spaces
     cleaned = re.sub(r'\b(MR|MRS|MS|DR|M/S|SHRI|SMT)\b', '', name, flags=re.IGNORECASE)
     cleaned = re.sub(r'[^A-ZA-Z0-9\s]', '', cleaned)
     return ' '.join(cleaned.upper().split())
@@ -52,6 +53,41 @@ def calculate_similarity(name1: str, name2: str) -> float:
     return SequenceMatcher(None, c1, c2).ratio()
 
 
+def calculate_vehicle_age(reg_date_str: str) -> str:
+    """Calculates vehicle age automatically from registration date string."""
+    if not reg_date_str or reg_date_str == "NA":
+        return "NA"
+    
+    date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d-%b-%Y", "%Y-%m-%d"]
+    reg_date = None
+    
+    for fmt in date_formats:
+        try:
+            reg_date = datetime.strptime(reg_date_str.strip(), fmt)
+            break
+        except ValueError:
+            continue
+
+    if not reg_date:
+        return "NA"
+
+    today = datetime.now()
+    years = today.year - reg_date.year
+    months = today.month - reg_date.month
+
+    if months < 0:
+        years -= 1
+        months += 12
+
+    parts = []
+    if years > 0:
+        parts.append(f"{years} year{'s' if years > 1 else ''}")
+    if months > 0:
+        parts.append(f"{months} month{'s' if months > 1 else ''}")
+
+    return ", ".join(parts) if parts else "Less than a month"
+
+
 def get_latest_owner_sr_no(sr1: Any, sr2: Any) -> str:
     """Picks the highest owner count number between both APIs."""
     nums = []
@@ -64,6 +100,15 @@ def get_latest_owner_sr_no(sr1: Any, sr2: Any) -> str:
     if nums:
         return str(max(nums))
     return "1"
+
+
+def normalize_maker(maker_str: str, vh_class: str) -> str:
+    """Corrects known maker name mismatches based on vehicle class."""
+    maker = maker_str.upper()
+    vh = vh_class.upper()
+    if "HONDA CARS" in maker and ("SCOOTER" in vh or "M-CYCLE" in vh or "2WN" in vh):
+        return "HONDA MOTORCYCLE & SCOOTER INDIA"
+    return maker_str
 
 
 async def fetch_api_1(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, Any]:
@@ -90,47 +135,58 @@ async def fetch_api_2(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, A
 
 
 def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], vehicle_no: str) -> Dict[str, Any]:
-    # Extract sub-dictionaries safely
     a1_res = api1_data.get("meta_data", {}).get("signzy_response", {}).get("result", {})
     a1_cust = api1_data.get("customer_details", {})
     a1_veh = api1_data.get("vehicle_details", {})
     a2_data = api2_data.get("data", {})
 
-    # Extract Owners & Addresses
     owner_1 = clean_val(a1_cust.get("full_name"), a1_res.get("owner"))
     owner_2 = clean_val(a2_data.get("owner"))
 
     addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
     addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
-    # Compare Names
     similarity = calculate_similarity(owner_1, owner_2)
-    is_same_owner = similarity >= 0.70  # 70% match threshold
+    is_same_owner = similarity >= 0.70
 
     if owner_1 != "NA" and owner_2 != "NA" and not is_same_owner:
-        # Transfer case / Different Owners
         final_owner = f"1st Owner: {owner_1} | 2nd Owner: {owner_2}"
+        out_owner_1 = owner_1
+        out_owner_2 = owner_2
         final_address = f"1st Owner Address: {addr_1} | 2nd Owner Address: {addr_2}"
+        out_addr_1 = addr_1
+        out_addr_2 = addr_2
         owner_transfer_detected = True
     else:
-        # Same Owner or only one API provided the name
         final_owner = owner_1 if owner_1 != "NA" else owner_2
-        # Pick the longer, more detailed address
+        out_owner_1 = final_owner
+        out_owner_2 = "NA"
+        
         if addr_1 != "NA" and addr_2 != "NA":
             final_address = addr_1 if len(addr_1) >= len(addr_2) else addr_2
         else:
             final_address = addr_1 if addr_1 != "NA" else addr_2
+            
+        out_addr_1 = final_address
+        out_addr_2 = "NA"
         owner_transfer_detected = False
 
-    # Owner Serial Count
-    sr1 = a1_res.get("ownerCount")
-    sr2 = a2_data.get("ownerCount")
-    latest_sr_no = get_latest_owner_sr_no(sr1, sr2)
+    reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
+    vehicle_age = clean_val(a1_res.get("vehicleAge"))
+    if vehicle_age == "NA":
+        vehicle_age = calculate_vehicle_age(reg_date)
 
-    # Models & Variants
+    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount"))
+
+    vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
+    raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
+    maker = normalize_maker(raw_maker, vh_class)
+
     model = clean_val(a1_res.get("model"), a2_data.get("vehicle"))
     variant = clean_val(a2_data.get("variant"))
-    maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
+
+    raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
+    is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
 
     data_payload = {
         "id": 2141636,
@@ -138,21 +194,21 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "rto": clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority")),
         "reg_no": vehicle_no.upper(),
         "pb_vehicle_code": "0",
-        "regn_dt": clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate")),
+        "regn_dt": reg_date,
         "chasi_no": clean_val(api1_data.get("chassis_number"), a2_data.get("chassis")),
         "engine_no": clean_val(api1_data.get("engine_number"), a2_data.get("engine")),
         "owner_name": final_owner,
-        "owner_1_name": owner_1,
-        "owner_2_name": owner_2,
+        "owner_1_name": out_owner_1,
+        "owner_2_name": out_owner_2,
         "owner_transfer_detected": owner_transfer_detected,
-        "vh_class": clean_val(a1_res.get("class"), a2_data.get("vehicleClass")),
-        "vehicle_category": clean_val(a1_res.get("vehicleCategory"), "Two-Wheeler"),
+        "vh_class": vh_class,
+        "vehicle_category": clean_val(a1_res.get("vehicleCategory"), "2WN"),
         "vehicle_model": model,
         "variant": variant,
-        "is_commercial": False if clean_val(api1_data.get("is_commercial")) in ["NA", "false", "False"] else True,
+        "is_commercial": is_commercial,
         "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType")),
         "maker": maker,
-        "vehicle_age": clean_val(a1_res.get("vehicleAge")),
+        "vehicle_age": vehicle_age,
         "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
         "state": clean_val(a1_res.get("state")),
         "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
@@ -165,8 +221,8 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "maker_modal": f"{maker} {model}".strip(),
         "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
         "address": final_address,
-        "address_1": addr_1,
-        "address_2": addr_2,
+        "address_1": out_addr_1,
+        "address_2": out_addr_2,
         "owner_sr_no": latest_sr_no,
         "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color")),
         "fitness_upto": clean_val(a1_res.get("rcExpiryDate")),
@@ -209,7 +265,8 @@ async def get_vehicle_json(vehicle_no: str):
             fetch_api_1(client, clean_vno),
             fetch_api_2(client, clean_vno)
         )
-    return format_custom_json(api1_resp, api2_resp, clean_vno)
+    formatted_data = format_custom_json(api1_resp, api2_resp, clean_vno)
+    return JSONResponse(content=formatted_data, headers={"Content-Type": "application/json; charset=utf-8"})
 
 
 if __name__ == "__main__":
