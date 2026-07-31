@@ -142,44 +142,75 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     a1_veh = api1_data.get("vehicle_details", {})
     a2_data = api2_data.get("data", {})
 
-    # Priority preference set to active live gateway owner first
-    owner_1 = clean_val(a1_res.get("owner"), a1_cust.get("full_name"))
-    owner_2 = clean_val(a2_data.get("owner"))
+    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount"))
+    sr_num = int(latest_sr_no) if latest_sr_no.isdigit() else 1
 
-    addr_1 = clean_val(a1_res.get("permanentAddress"), a1_cust.get("communication_address", {}).get("address_line"))
+    # Extract all possible owner names across fields
+    cust_name = clean_val(a1_cust.get("full_name"))
+    signzy_name = clean_val(a1_res.get("owner"))
+    api2_name = clean_val(a2_data.get("owner"))
+
+    # Collect unique names in order of arrival
+    names_list = []
+    for nm in [cust_name, signzy_name, api2_name]:
+        if nm != "NA":
+            is_dup = False
+            for existing in names_list:
+                if calculate_similarity(nm, existing) >= 0.70:
+                    is_dup = True
+                    break
+            if not is_dup:
+                names_list.append(nm)
+
+    # Address extraction
+    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
     addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
-    similarity = calculate_similarity(owner_1, owner_2)
-    is_same_owner = similarity >= 0.70
-
-    if owner_1 != "NA" and owner_2 != "NA" and not is_same_owner:
-        final_owner = f"1st Owner: {owner_1} | 2nd Owner: {owner_2}"
-        out_owner_1 = owner_1
-        out_owner_2 = owner_2
-        final_address = f"1st Owner Address: {addr_1} | 2nd Owner Address: {addr_2}"
-        out_addr_1 = addr_1
-        out_addr_2 = addr_2
+    # If 2 or more distinct names are detected OR owner count is explicitly 2+, mark transfer
+    if len(names_list) >= 2 or sr_num >= 2:
         owner_transfer_detected = True
-    else:
-        final_owner = owner_1 if owner_1 != "NA" else owner_2
-        out_owner_1 = final_owner
-        out_owner_2 = "NA"
         
+        if len(names_list) >= 2:
+            out_owner_1 = names_list[0]
+            out_owner_2 = names_list[1]
+        elif len(names_list) == 1:
+            out_owner_1 = "NA"
+            out_owner_2 = names_list[0]
+        else:
+            out_owner_1 = "NA"
+            out_owner_2 = "NA"
+
+        final_owner = f"1st Owner: {out_owner_1} | 2nd Owner: {out_owner_2}"
+        
+        # Format addresses based on 1st and 2nd owner
+        out_addr_1 = addr_1 if addr_1 != "NA" else "NA"
+        out_addr_2 = addr_2 if addr_2 != "NA" else (addr_1 if addr_1 != "NA" else "NA")
+
+        if out_addr_1 != "NA" and out_addr_2 != "NA" and out_addr_1 != out_addr_2:
+            final_address = f"1st Owner Address: {out_addr_1} | 2nd Owner Address: {out_addr_2}"
+        elif out_addr_1 != "NA":
+            final_address = f"1st Owner Address: {out_addr_1} | 2nd Owner Address: {out_addr_2}"
+        else:
+            final_address = out_addr_1 if out_addr_1 != "NA" else out_addr_2
+
+    else:
+        owner_transfer_detected = False
+        out_owner_1 = names_list[0] if names_list else "NA"
+        out_owner_2 = "NA"
+        final_owner = out_owner_1
+
         if addr_1 != "NA" and addr_2 != "NA":
             final_address = addr_1 if len(addr_1) >= len(addr_2) else addr_2
         else:
             final_address = addr_1 if addr_1 != "NA" else addr_2
-            
+
         out_addr_1 = final_address
         out_addr_2 = "NA"
-        owner_transfer_detected = False
 
     reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
     vehicle_age = clean_val(a1_res.get("vehicleAge"))
     if vehicle_age == "NA":
         vehicle_age = calculate_vehicle_age(reg_date)
-
-    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount"))
 
     vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
     raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
@@ -222,7 +253,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         else:
             raw_cat = "4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN"
 
-    # RTO & State Fallback Logic (Fixes missing state when RTO has 'Surat, Gujarat')
+    # RTO & State Fallback Logic
     rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
     state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
     if state_val == "NA" and rto_val != "NA" and "," in rto_val:
