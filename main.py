@@ -1,14 +1,16 @@
 import asyncio
 from typing import Any, Dict
 import os
+import re
+from difflib import SequenceMatcher
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-app = FastAPI(title="Vehicle Details Master Aggregator API")
+app = FastAPI(title="Parivahan Vehicle Details Master API")
 
-# Allow CORS for front-end access
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,11 +24,46 @@ API2_BASE_URL = "https://cjpen.vercel.app/vehicle"
 
 
 def clean_val(*values: Any) -> str:
-    """Helper to pick first valid string or return N/A."""
+    """Returns the first non-null/non-empty string or 'NA'."""
     for v in values:
-        if v is not None and str(v).strip().upper() not in ["NONE", "NULL", "NA", "N/A", "", "FALSE"]:
-            return str(v).strip()
-    return "N/A"
+        if v is not None:
+            val_str = str(v).strip()
+            if val_str.upper() not in ["NONE", "NULL", "NA", "N/A", "", "FALSE"]:
+                return val_str
+    return "NA"
+
+
+def clean_name_for_comparison(name: str) -> str:
+    """Cleans owner name for accurate string comparison."""
+    if not name or name == "NA":
+        return ""
+    # Remove titles, punctuation, and extra spaces
+    cleaned = re.sub(r'\b(MR|MRS|MS|DR|M/S|SHRI|SMT)\b', '', name, flags=re.IGNORECASE)
+    cleaned = re.sub(r'[^A-ZA-Z0-9\s]', '', cleaned)
+    return ' '.join(cleaned.upper().split())
+
+
+def calculate_similarity(name1: str, name2: str) -> float:
+    """Calculates similarity percentage between two names."""
+    c1 = clean_name_for_comparison(name1)
+    c2 = clean_name_for_comparison(name2)
+    if not c1 or not c2:
+        return 0.0
+    return SequenceMatcher(None, c1, c2).ratio()
+
+
+def get_latest_owner_sr_no(sr1: Any, sr2: Any) -> str:
+    """Picks the highest owner count number between both APIs."""
+    nums = []
+    for s in [sr1, sr2]:
+        val = clean_val(s)
+        if val != "NA":
+            match = re.search(r'\d+', val)
+            if match:
+                nums.append(int(match.group()))
+    if nums:
+        return str(max(nums))
+    return "1"
 
 
 async def fetch_api_1(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, Any]:
@@ -52,111 +89,106 @@ async def fetch_api_2(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, A
     return {}
 
 
-def merge_and_compare_data(api1_data: Dict[str, Any], api2_data: Dict[str, Any], vehicle_no: str) -> Dict[str, Any]:
-    # Raw Sub-Dictionaries
+def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], vehicle_no: str) -> Dict[str, Any]:
+    # Extract sub-dictionaries safely
     a1_res = api1_data.get("meta_data", {}).get("signzy_response", {}).get("result", {})
     a1_cust = api1_data.get("customer_details", {})
     a1_veh = api1_data.get("vehicle_details", {})
     a2_data = api2_data.get("data", {})
 
-    # Owner Name Comparison Logic
-    owner_api1 = clean_val(a1_cust.get("full_name"), a1_res.get("owner"))
-    owner_api2 = clean_val(a2_data.get("owner"))
+    # Extract Owners & Addresses
+    owner_1 = clean_val(a1_cust.get("full_name"), a1_res.get("owner"))
+    owner_2 = clean_val(a2_data.get("owner"))
 
-    owner_mismatch = False
-    if owner_api1 != "N/A" and owner_api2 != "N/A":
-        if owner_api1.upper() != owner_api2.upper():
-            owner_mismatch = True
+    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
+    addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
-    final_owner_name = owner_api1 if owner_api1 != "N/A" else owner_api2
+    # Compare Names
+    similarity = calculate_similarity(owner_1, owner_2)
+    is_same_owner = similarity >= 0.70  # 70% match threshold
 
-    # Address Comparison Logic
-    addr_api1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"))
-    addr_api2 = clean_val(a2_data.get("presentAddress"))
+    if owner_1 != "NA" and owner_2 != "NA" and not is_same_owner:
+        # Transfer case / Different Owners
+        final_owner = f"1st Owner: {owner_1} | 2nd Owner: {owner_2}"
+        final_address = f"1st Owner Address: {addr_1} | 2nd Owner Address: {addr_2}"
+        owner_transfer_detected = True
+    else:
+        # Same Owner or only one API provided the name
+        final_owner = owner_1 if owner_1 != "NA" else owner_2
+        # Pick the longer, more detailed address
+        if addr_1 != "NA" and addr_2 != "NA":
+            final_address = addr_1 if len(addr_1) >= len(addr_2) else addr_2
+        else:
+            final_address = addr_1 if addr_1 != "NA" else addr_2
+        owner_transfer_detected = False
 
-    address_mismatch = False
-    if addr_api1 != "N/A" and addr_api2 != "N/A":
-        if addr_api1.upper() != addr_api2.upper():
-            address_mismatch = True
+    # Owner Serial Count
+    sr1 = a1_res.get("ownerCount")
+    sr2 = a2_data.get("ownerCount")
+    latest_sr_no = get_latest_owner_sr_no(sr1, sr2)
 
-    final_address = addr_api1 if len(str(addr_api1)) >= len(str(addr_api2)) else addr_api2
-
-    # Model & Variant
+    # Models & Variants
     model = clean_val(a1_res.get("model"), a2_data.get("vehicle"))
     variant = clean_val(a2_data.get("variant"))
-    full_model = f"{model} ({variant})" if variant != "N/A" and variant not in model else model
+    maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
+
+    data_payload = {
+        "id": 2141636,
+        "status": "SUCCESS",
+        "rto": clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority")),
+        "reg_no": vehicle_no.upper(),
+        "pb_vehicle_code": "0",
+        "regn_dt": clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate")),
+        "chasi_no": clean_val(api1_data.get("chassis_number"), a2_data.get("chassis")),
+        "engine_no": clean_val(api1_data.get("engine_number"), a2_data.get("engine")),
+        "owner_name": final_owner,
+        "owner_1_name": owner_1,
+        "owner_2_name": owner_2,
+        "owner_transfer_detected": owner_transfer_detected,
+        "vh_class": clean_val(a1_res.get("class"), a2_data.get("vehicleClass")),
+        "vehicle_category": clean_val(a1_res.get("vehicleCategory"), "Two-Wheeler"),
+        "vehicle_model": model,
+        "variant": variant,
+        "is_commercial": False if clean_val(api1_data.get("is_commercial")) in ["NA", "false", "False"] else True,
+        "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType")),
+        "maker": maker,
+        "vehicle_age": clean_val(a1_res.get("vehicleAge")),
+        "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
+        "state": clean_val(a1_res.get("state")),
+        "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
+        "puc_no": clean_val(a1_res.get("puccNumber"), a2_data.get("puccNumber")),
+        "puc_upto": clean_val(a1_res.get("puccUpto"), a2_data.get("puccValidUpto")),
+        "insurance_comp": clean_val(a1_res.get("vehicleInsuranceCompanyName"), a2_data.get("insuranceCompanyName")),
+        "financer_name": clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName")),
+        "is_financed": clean_val(a1_veh.get("is_vehicle_financed")),
+        "source": "PARIVAHAN_SERVICE_GATEWAY",
+        "maker_modal": f"{maker} {model}".strip(),
+        "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
+        "address": final_address,
+        "address_1": addr_1,
+        "address_2": addr_2,
+        "owner_sr_no": latest_sr_no,
+        "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color")),
+        "fitness_upto": clean_val(a1_res.get("rcExpiryDate")),
+        "no_of_seats": clean_val(a1_res.get("vehicleSeatCapacity"), a2_data.get("seatCapacity"), "2"),
+        "fuel_norms": clean_val(a1_res.get("normsType")),
+        "mobile_no": "NA",
+        "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
+        "blacklist_details": a1_res.get("blacklistDetails", []),
+        "permit_details": {
+            "permit_number": clean_val(a1_res.get("permitNumber")),
+            "permit_type": clean_val(a1_res.get("permitType")),
+            "permit_valid_upto": clean_val(a1_res.get("permitValidUpto"))
+        }
+    }
 
     return {
-        "success": True,
-        "searched_vehicle_number": vehicle_no.upper(),
-        "mismatch_alerts": {
-            "is_owner_mismatch": owner_mismatch,
-            "is_address_mismatch": address_mismatch,
-        },
-        "data": {
-            "registration_details": {
-                "registration_number": clean_val(a1_res.get("regNo"), a2_data.get("regNo"), vehicle_no.upper()),
-                "registration_date": clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate")),
-                "rc_status": clean_val(a1_res.get("status"), "ACTIVE" if a2_data.get("dataStatus") == 1 else "N/A"),
-                "status_as_on": clean_val(a1_res.get("statusAsOn")),
-                "rto_code": clean_val(a1_res.get("rtoCode"), a2_data.get("rtoCode")),
-                "rto_authority": clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority")),
-                "rc_expiry_date": clean_val(a1_res.get("rcExpiryDate")),
-                "tax_upto": clean_val(a1_res.get("vehicleTaxUpto"))
-            },
-            "owner_details": {
-                "owner_name": final_owner_name,
-                "owner_name_api1": owner_api1,
-                "owner_name_api2": owner_api2,
-                "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
-                "ownership_count": clean_val(a1_res.get("ownerCount")),
-                "customer_type": clean_val(api1_data.get("customer_type")),
-                "present_address": final_address,
-                "present_address_api1": addr_api1,
-                "present_address_api2": addr_api2,
-                "permanent_address": clean_val(a1_res.get("permanentAddress"), a2_data.get("permAddress")),
-                "pincode": clean_val(a2_data.get("pincode"))
-            },
-            "specifications": {
-                "manufacturer": clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer")),
-                "vehicle_model": full_model,
-                "variant": variant,
-                "vehicle_class": clean_val(a1_res.get("class"), a2_data.get("vehicleClass")),
-                "vehicle_category": clean_val(a1_res.get("vehicleCategory")),
-                "body_type": clean_val(a1_res.get("bodyType")),
-                "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType")),
-                "norms_type": clean_val(a1_res.get("normsType")),
-                "chassis_number": clean_val(api1_data.get("chassis_number"), a2_data.get("chassis")),
-                "engine_number": clean_val(api1_data.get("engine_number"), a2_data.get("engine")),
-                "cubic_capacity": clean_val(a1_res.get("vehicleCubicCapacity"), a2_data.get("cubicCapacity")),
-                "cylinders_no": clean_val(a1_res.get("vehicleCylindersNo")),
-                "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color")),
-                "manufactured_month_year": clean_val(a1_res.get("vehicleManufacturingMonthYear"), a2_data.get("manufacturerMonthYear")),
-                "unladen_weight": clean_val(a1_res.get("unladenWeight")),
-                "gross_vehicle_weight": clean_val(a1_res.get("grossVehicleWeight")),
-                "wheelbase": clean_val(a1_res.get("wheelbase")),
-                "seating_capacity": clean_val(a1_res.get("vehicleSeatCapacity"), a2_data.get("seatCapacity"))
-            },
-            "compliance_and_insurance": {
-                "insurance_company": clean_val(a1_res.get("vehicleInsuranceCompanyName"), a2_data.get("insuranceCompanyName")),
-                "insurance_policy_number": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
-                "insurance_expiry": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
-                "puc_number": clean_val(a1_res.get("puccNumber"), a2_data.get("puccNumber")),
-                "puc_expiry": clean_val(a1_res.get("puccUpto"), a2_data.get("puccValidUpto")),
-                "financer_name": clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName")),
-                "is_financed": clean_val(a1_veh.get("is_vehicle_financed"))
-            },
-            "permits_and_status": {
-                "is_commercial": clean_val(api1_data.get("is_commercial"), a2_data.get("isCommercial")),
-                "blacklist_status": clean_val(a1_res.get("blacklistStatus")),
-                "blacklist_details": a1_res.get("blacklistDetails", []),
-                "challan_details": a1_res.get("challanDetails", []),
-                "permit_number": clean_val(a1_res.get("permitNumber")),
-                "permit_type": clean_val(a1_res.get("permitType")),
-                "permit_valid_upto": clean_val(a1_res.get("permitValidUpto")),
-                "national_permit_number": clean_val(a1_res.get("nationalPermitNumber")),
-                "noc_details": clean_val(a1_res.get("nocDetails"))
-            }
+        "query": vehicle_no.upper(),
+        "rc_details": {
+            "status": True,
+            "response_code": 200,
+            "response_message": "Fetched [ PARIVAHAN SERVICE ]",
+            "data": [data_payload]
         }
     }
 
@@ -165,20 +197,19 @@ def merge_and_compare_data(api1_data: Dict[str, Any], api2_data: Dict[str, Any],
 def home():
     return {
         "status": "Online",
-        "message": "Vehicle Details Master API is running successfully.",
-        "usage": "GET /api/v1/vehicle/{vehicle_number}"
+        "message": "Parivahan RC Master API Gateway is active."
     }
 
 
 @app.get("/api/v1/vehicle/{vehicle_no}")
-async def get_master_vehicle_data(vehicle_no: str):
+async def get_vehicle_json(vehicle_no: str):
     clean_vno = vehicle_no.replace(" ", "").replace("-", "").upper()
     async with httpx.AsyncClient() as client:
         api1_resp, api2_resp = await asyncio.gather(
             fetch_api_1(client, clean_vno),
             fetch_api_2(client, clean_vno)
         )
-    return merge_and_compare_data(api1_resp, api2_resp, clean_vno)
+    return format_custom_json(api1_resp, api2_resp, clean_vno)
 
 
 if __name__ == "__main__":
