@@ -188,6 +188,17 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
     is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
 
+    # Deep-Check Fallbacks for Financer, PUC & NOC (Added smoothly)
+    financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
+    raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
+    if raw_financed != "NA":
+        is_financed_status = raw_financed
+    else:
+        is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
+
+    puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
+    puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"))
+
     data_payload = {
         "id": 2141636,
         "status": "SUCCESS",
@@ -212,11 +223,11 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
         "state": clean_val(a1_res.get("state")),
         "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
-        "puc_no": clean_val(a1_res.get("puccNumber"), a2_data.get("puccNumber")),
-        "puc_upto": clean_val(a1_res.get("puccUpto"), a2_data.get("puccValidUpto")),
+        "puc_no": puc_no,
+        "puc_upto": puc_upto,
         "insurance_comp": clean_val(a1_res.get("vehicleInsuranceCompanyName"), a2_data.get("insuranceCompanyName")),
-        "financer_name": clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName")),
-        "is_financed": clean_val(a1_veh.get("is_vehicle_financed")),
+        "financer_name": financer,
+        "is_financed": is_financed_status,
         "source": "PARIVAHAN_SERVICE_GATEWAY",
         "maker_modal": f"{maker} {model}".strip(),
         "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
@@ -229,6 +240,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "no_of_seats": clean_val(a1_res.get("vehicleSeatCapacity"), a2_data.get("seatCapacity"), "2"),
         "fuel_norms": clean_val(a1_res.get("normsType")),
         "mobile_no": "NA",
+        "noc_details": clean_val(a1_res.get("nocDetails"), a2_data.get("nocDetails")),
         "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
         "blacklist_details": a1_res.get("blacklistDetails", []),
         "permit_details": {
