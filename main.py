@@ -142,10 +142,11 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     a1_veh = api1_data.get("vehicle_details", {})
     a2_data = api2_data.get("data", {})
 
-    owner_1 = clean_val(a1_cust.get("full_name"), a1_res.get("owner"))
+    # Priority preference set to active live gateway owner first
+    owner_1 = clean_val(a1_res.get("owner"), a1_cust.get("full_name"))
     owner_2 = clean_val(a2_data.get("owner"))
 
-    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
+    addr_1 = clean_val(a1_res.get("permanentAddress"), a1_cust.get("communication_address", {}).get("address_line"))
     addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
     similarity = calculate_similarity(owner_1, owner_2)
