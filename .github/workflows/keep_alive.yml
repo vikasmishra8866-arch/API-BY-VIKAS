@@ -2,9 +2,9 @@ name: Render Keep Alive Cron
 
 on:
   schedule:
-    # Har 4 minute me chalega
+    # Runs every 4 minutes
     - cron: '*/4 * * * *'
-  workflow_dispatch: # Manual test ke liye button
+  workflow_dispatch:
 
 jobs:
   ping-render:
@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Send Ping Request to Render API
         run: |
-          curl -s -f https://vehicle-master-api.onrender.com/api/v1/vehicle/GJ01HZ8969/ > /dev/null
+          curl -s -f "https://vehicle-master-api.onrender.com/api/v1/vehicle/GJ01MZ8989" > /dev/null
           echo "Ping successful! Render app kept alive at $(date)"
