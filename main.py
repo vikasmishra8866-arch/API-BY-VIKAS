@@ -30,7 +30,7 @@ def clean_val(*values: Any) -> str:
     for v in values:
         if v is not None:
             val_str = str(v).strip()
-            if val_str.upper() not in ["NONE", "NULL", "NA", "N/A", ""]:
+            if val_str.upper() not in ["NONE", "NULL", "NA", "N/A", "", "FALSE"]:
                 return val_str
     return "NA"
 
@@ -138,25 +138,17 @@ async def fetch_api_2(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, A
 
 def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], vehicle_no: str) -> Dict[str, Any]:
     a1_res = api1_data.get("meta_data", {}).get("signzy_response", {}).get("result", {})
-    if not a1_res and isinstance(api1_data.get("result"), dict):
-        a1_res = api1_data.get("result", {})
-        
     a1_cust = api1_data.get("customer_details", {})
     a1_veh = api1_data.get("vehicle_details", {})
-    
     a2_data = api2_data.get("data", {})
-    if not a2_data and isinstance(api2_data.get("result"), dict):
-        a2_data = api2_data.get("result", {})
-    elif not a2_data and isinstance(api2_data, dict):
-        a2_data = api2_data
 
-    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount", a2_data.get("owner_sr_no")))
+    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount"))
     sr_num = int(latest_sr_no) if latest_sr_no.isdigit() else 1
 
     # Extract all possible owner names across fields
     cust_name = clean_val(a1_cust.get("full_name"))
-    signzy_name = clean_val(a1_res.get("owner"), a1_veh.get("owner_name"))
-    api2_name = clean_val(a2_data.get("owner"), a2_data.get("owner_name"), a2_data.get("ownerName"))
+    signzy_name = clean_val(a1_res.get("owner"))
+    api2_name = clean_val(a2_data.get("owner"))
 
     # Collect unique names in order of arrival
     names_list = []
@@ -170,13 +162,21 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             if not is_dup:
                 names_list.append(nm)
 
-    # Address extraction
-    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"), a1_veh.get("address"))
-    addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"), a2_data.get("address"))
+    # Address extraction across all keys
+    addr_1 = clean_val(
+        a1_cust.get("communication_address", {}).get("address_line"),
+        a1_res.get("permanentAddress"),
+        a1_res.get("presentAddress")
+    )
+    addr_2 = clean_val(
+        a2_data.get("presentAddress"),
+        a2_data.get("permAddress"),
+        a2_data.get("permanentAddress")
+    )
 
     # Financer details extraction across APIs
     financer_api1 = clean_val(a1_res.get("rcFinancer"), a1_veh.get("financer_name"))
-    financer_api2 = clean_val(a2_data.get("financerName"), a2_data.get("financer"))
+    financer_api2 = clean_val(a2_data.get("financerName"))
 
     # If 2 or more distinct names are detected OR owner count is explicitly 2+, mark transfer
     if len(names_list) >= 2 or sr_num >= 2:
@@ -231,31 +231,48 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         out_addr_2 = "NA"
 
         # Single Owner Financer Logic
-        financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a2_data.get("financer"), a1_veh.get("financer_name"))
-        raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"), a2_data.get("isFinanced"))
+        financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
+        raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
         if raw_financed != "NA":
-            is_financed_status = str(raw_financed)
+            is_financed_status = raw_financed
         else:
             is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
-    reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"), a2_data.get("registrationDate"))
-    vehicle_age = clean_val(a1_res.get("vehicleAge"), a2_data.get("vehicleAge"))
+    reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
+    vehicle_age = clean_val(a1_res.get("vehicleAge"))
     if vehicle_age == "NA":
         vehicle_age = calculate_vehicle_age(reg_date)
 
-    vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"), a2_data.get("class"))
-    raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"), a2_data.get("maker"))
+    vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
+    raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
     maker = normalize_maker(raw_maker, vh_class)
 
-    model = clean_val(a1_res.get("model"), a2_data.get("vehicle"), a2_data.get("model"))
-    variant = clean_val(a2_data.get("variant"), a1_res.get("variant"))
+    model = clean_val(a1_res.get("model"), a2_data.get("vehicle"))
+    variant = clean_val(a2_data.get("variant"))
 
-    raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"), a2_data.get("isCommercial"))).upper()
+    raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
     is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
 
-    # PUC Details Fallback
-    puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
-    puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"), a2_data.get("pucValidUpto"))
+    # Expanded PUC Details Fallback to capture all variations (pucNumber, puccNumber, pucNo, puccNo, etc.)
+    puc_no = clean_val(
+        a1_res.get("puccNumber"),
+        a1_res.get("pucNumber"),
+        a1_res.get("puc_number"),
+        a1_veh.get("puc_number"),
+        a2_data.get("puccNumber"),
+        a2_data.get("pucNumber"),
+        a2_data.get("pucNo"),
+        a2_data.get("puccNo")
+    )
+    puc_upto = clean_val(
+        a1_res.get("puccUpto"),
+        a1_res.get("pucUpto"),
+        a1_res.get("pucValidUpto"),
+        a1_veh.get("puc_expiry"),
+        a2_data.get("puccValidUpto"),
+        a2_data.get("pucValidUpto"),
+        a2_data.get("pucUpto")
+    )
 
     # Clean Maker-Model combination
     if maker == "NA" and model == "NA":
@@ -277,7 +294,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             raw_cat = "4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN"
 
     # RTO & State Fallback Logic
-    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"), a2_data.get("rtoCode"), a2_data.get("rto"))
+    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
     state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
     if state_val == "NA" and rto_val != "NA" and "," in rto_val:
         state_val = rto_val.split(",")[-1].strip()
@@ -289,8 +306,8 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "reg_no": vehicle_no.upper(),
         "pb_vehicle_code": "0",
         "regn_dt": reg_date,
-        "chasi_no": clean_val(api1_data.get("chassis_number"), a1_res.get("chassis"), a2_data.get("chassis"), a2_data.get("chassisNumber")),
-        "engine_no": clean_val(api1_data.get("engine_number"), a1_res.get("engine"), a2_data.get("engine"), a2_data.get("engineNumber")),
+        "chasi_no": clean_val(api1_data.get("chassis_number"), a2_data.get("chassis")),
+        "engine_no": clean_val(api1_data.get("engine_number"), a2_data.get("engine")),
         "owner_name": final_owner,
         "owner_1_name": out_owner_1,
         "owner_2_name": out_owner_2,
@@ -300,12 +317,12 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "vehicle_model": model,
         "variant": variant,
         "is_commercial": is_commercial,
-        "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType"), a2_data.get("fuel_type")),
+        "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType")),
         "maker": maker,
         "vehicle_age": vehicle_age,
-        "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a1_res.get("insuranceUpto"), a2_data.get("insuranceUpto")),
+        "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
         "state": state_val,
-        "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber"), a2_data.get("policyNumber")),
+        "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
         "puc_no": puc_no,
         "puc_upto": puc_upto,
         "insurance_comp": clean_val(a1_res.get("vehicleInsuranceCompanyName"), a2_data.get("insuranceCompanyName")),
@@ -313,32 +330,24 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "is_financed": is_financed_status,
         "source": "PARIVAHAN_SERVICE_GATEWAY",
         "maker_modal": maker_modal,
-        "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName"), a2_data.get("fatherName")),
+        "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
         "address": final_address,
         "address_1": out_addr_1,
         "address_2": out_addr_2,
         "owner_sr_no": latest_sr_no,
-        "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color"), a2_data.get("color")),
-        "fitness_upto": clean_val(a1_res.get("rcExpiryDate"), a2_data.get("fitnessUpto"), a2_data.get("rcExpiryDate")),
+        "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color")),
+        "fitness_upto": clean_val(a1_res.get("rcExpiryDate")),
         "no_of_seats": clean_val(a1_res.get("vehicleSeatCapacity"), a2_data.get("seatCapacity"), "2"),
-        "fuel_norms": clean_val(a1_res.get("normsType"), a2_data.get("normsType")),
-        "mobile_no": clean_val(a1_res.get("mobileNumber"), a2_data.get("mobileNumber"), "NA"),
+        "fuel_norms": clean_val(a1_res.get("normsType")),
+        "mobile_no": "NA",
         "noc_details": clean_val(a1_res.get("nocDetails"), a2_data.get("nocDetails")),
-        "blacklist_status": clean_val(a1_res.get("blacklistStatus"), a2_data.get("blacklistStatus"), "Clean"),
-        "blacklist_details": a1_res.get("blacklistDetails", a2_data.get("blacklistDetails", [])),
+        "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
+        "blacklist_details": a1_res.get("blacklistDetails", []),
         "permit_details": {
-            "permit_number": clean_val(a1_res.get("permitNumber"), a2_data.get("permitNumber")),
-            "permit_type": clean_val(a1_res.get("permitType"), a2_data.get("permitType")),
-            "permit_valid_upto": clean_val(a1_res.get("permitValidUpto"), a2_data.get("permitValidUpto"))
-        },
-        "manufacturing_date": clean_val(a1_res.get("manufacturingDate"), a1_veh.get("manufacturing_date"), a2_data.get("manufactureDate"), a2_data.get("manufacturedMonthYear")),
-        "unladen_weight": clean_val(a1_res.get("unladenWeight"), a2_data.get("unladenWeight")),
-        "gross_vehicle_weight": clean_val(a1_res.get("grossVehicleWeight"), a2_data.get("grossVehicleWeight")),
-        "wheelbase": clean_val(a1_res.get("wheelbase"), a2_data.get("wheelbase")),
-        "cylinder_count": clean_val(a1_res.get("numberCylinders"), a1_res.get("cylinderCount"), a2_data.get("cylindersCount"), a2_data.get("cylinderCount")),
-        "cubic_capacity": clean_val(a1_res.get("cubicCapacity"), a2_data.get("cubicCapacity")),
-        "rto_code": clean_val(a1_res.get("rtoCode"), a2_data.get("rtoCode")),
-        "tax_upto": clean_val(a1_res.get("taxUpto"), a1_veh.get("tax_upto"), a2_data.get("taxValidUpto"), a2_data.get("taxUpto"))
+            "permit_number": clean_val(a1_res.get("permitNumber")),
+            "permit_type": clean_val(a1_res.get("permitType")),
+            "permit_valid_upto": clean_val(a1_res.get("permitValidUpto"))
+        }
     }
 
     return {
