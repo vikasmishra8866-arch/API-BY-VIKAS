@@ -54,7 +54,7 @@ def calculate_similarity(name1: str, name2: str) -> float:
 
 
 def calculate_vehicle_age(reg_date_str: str) -> str:
-    """Calculates vehicle age automatically from registration date string."""
+    """Calculates vehicle age automatically and precisely from registration date string."""
     if not reg_date_str or reg_date_str == "NA":
         return "NA"
     
@@ -74,6 +74,9 @@ def calculate_vehicle_age(reg_date_str: str) -> str:
     today = datetime.now()
     years = today.year - reg_date.year
     months = today.month - reg_date.month
+
+    if today.day < reg_date.day:
+        months -= 1
 
     if months < 0:
         years -= 1
@@ -231,9 +234,9 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
     reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
-    vehicle_age = clean_val(a1_res.get("vehicleAge"))
+    vehicle_age = calculate_vehicle_age(reg_date)
     if vehicle_age == "NA":
-        vehicle_age = calculate_vehicle_age(reg_date)
+        vehicle_age = clean_val(a1_res.get("vehicleAge"))
 
     vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
     raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
@@ -254,6 +257,16 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     # PUC Details Fallback
     puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
     puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"))
+
+    # Technical & Specs Extraction across APIs
+    mfg_month_year = clean_val(a1_res.get("vehicleManufacturingMonthYear"), a2_data.get("manufacturingDate"), a2_data.get("manufacturedMonthYear"))
+    unladen_wt = clean_val(a1_res.get("unladenWeight"), a2_data.get("unladenWeight"))
+    gross_wt = clean_val(a1_res.get("grossVehicleWeight"), a2_data.get("grossVehicleWeight"))
+    w_base = clean_val(a1_res.get("wheelbase"), a2_data.get("wheelbase"))
+    cyl_count = clean_val(a1_res.get("vehicleCylindersNo"), a2_data.get("cylindersNo"), a2_data.get("cylinderCount"))
+    cubic_cap = clean_val(a1_res.get("vehicleCubicCapacity"), a2_data.get("cubicCapacity"), a1_veh.get("cubic_capacity"))
+    rto_cd = clean_val(api1_data.get("rb_rto_code"), a1_res.get("rtoCode"), a2_data.get("rtoCode"))
+    tax_upto = clean_val(a1_res.get("vehicleTaxUpto"), a2_data.get("taxValidUpto"), a2_data.get("taxUpto"))
 
     # Clean Maker-Model combination
     if maker == "NA" and model == "NA":
@@ -326,6 +339,14 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "noc_details": clean_val(a1_res.get("nocDetails"), a2_data.get("nocDetails")),
         "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
         "blacklist_details": a1_res.get("blacklistDetails", []),
+        "manufactured_month_year": mfg_month_year,
+        "unladen_weight": unladen_wt,
+        "gross_vehicle_weight": gross_wt,
+        "wheelbase": w_base,
+        "cylinder_count": cyl_count,
+        "cubic_capacity": cubic_cap,
+        "rto_code": rto_cd,
+        "tax_valid_upto": tax_upto,
         "permit_details": {
             "permit_number": clean_val(a1_res.get("permitNumber")),
             "permit_type": clean_val(a1_res.get("permitType")),
