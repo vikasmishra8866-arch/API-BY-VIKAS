@@ -58,7 +58,7 @@ def calculate_vehicle_age(reg_date_str: str) -> str:
     if not reg_date_str or reg_date_str == "NA":
         return "NA"
     
-    date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d-%b-%Y", "%Y-%m-%d"]
+    date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d-%b-%Y", "%Y-%m-%d", "%m/%Y", "%m-%Y"]
     reg_date = None
     
     for fmt in date_formats:
@@ -231,9 +231,11 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
 
     reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
-    vehicle_age = clean_val(a1_res.get("vehicleAge"))
+    
+    # Precise Vehicle Age Calculation
+    vehicle_age = calculate_vehicle_age(reg_date)
     if vehicle_age == "NA":
-        vehicle_age = calculate_vehicle_age(reg_date)
+        vehicle_age = clean_val(a1_res.get("vehicleAge"), a2_data.get("vehicleAge"))
 
     vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
     raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
@@ -276,8 +278,21 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     if state_val == "NA" and rto_val != "NA" and "," in rto_val:
         state_val = rto_val.split(",")[-1].strip()
 
-    # Extraction of New Detailed Technical Fields across APIs
-    mfg_mon_year = clean_val(a1_res.get("manufacturingDate"), a1_res.get("mfgDate"), a1_veh.get("manufacturing_date"), a2_data.get("manufactureDate"), a2_data.get("mfgDate"))
+    # Deep Search Extraction for Manufacturing Month & Year across all potential keys
+    mfg_mon_year = clean_val(
+        a1_res.get("mfgMonthYear"),
+        a1_res.get("manufacturingMonthYear"),
+        a1_res.get("mfgDate"),
+        a1_res.get("manufacturingDate"),
+        a1_res.get("manufactureYear"),
+        a1_veh.get("manufacturing_date"),
+        a1_veh.get("mfg_date"),
+        a2_data.get("mfgMonthYear"),
+        a2_data.get("manufactureDate"),
+        a2_data.get("mfgDate"),
+        a2_data.get("mfgYear")
+    )
+
     unladen_wt = clean_val(a1_res.get("unladenWeight"), a1_veh.get("unladen_weight"), a2_data.get("unladenWeight"), a2_data.get("unladenWt"))
     gross_wt = clean_val(a1_res.get("grossVehicleWeight"), a1_veh.get("gross_weight"), a2_data.get("grossVehicleWeight"), a2_data.get("grossWt"))
     wheelbase_val = clean_val(a1_res.get("wheelbase"), a1_veh.get("wheelbase"), a2_data.get("wheelbase"))
