@@ -1,381 +1,253 @@
-import asyncio
-from typing import Any, Dict
-import os
-import re
-from datetime import datetime
-from difflib import SequenceMatcher
-import httpx
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import uvicorn
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
 
-app = FastAPI(title="Parivahan Vehicle Details Master API")
-
-# Allow CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="RC Data Normalizer API",
+    description="API to parse and normalize RC details from API 1 and API 2 formats",
+    version="1.0.0"
 )
 
-API1_BASE_URL = "https://unsalubriously-unfragrant-rosetta.ngrok-free.dev/api/vehicle-details-only"
-API2_BASE_URL = "https://cjpen.vercel.app/vehicle"
+# ------------------------------------------------------------------
+# Normalization Logic
+# ------------------------------------------------------------------
 
-
-def clean_val(*values: Any) -> str:
-    """Returns the first non-null/non-empty string or 'NA'."""
-    for v in values:
-        if v is not None:
-            val_str = str(v).strip()
-            if val_str.upper() not in ["NONE", "NULL", "NA", "N/A", "", "FALSE"]:
-                return val_str
-    return "NA"
-
-
-def clean_name_for_comparison(name: str) -> str:
-    """Cleans owner name for accurate string comparison."""
-    if not name or name == "NA":
-        return ""
-    cleaned = re.sub(r'\b(MR|MRS|MS|DR|M/S|SHRI|SMT)\b', '', name, flags=re.IGNORECASE)
-    cleaned = re.sub(r'[^A-ZA-Z0-9\s]', '', cleaned)
-    return ' '.join(cleaned.upper().split())
-
-
-def calculate_similarity(name1: str, name2: str) -> float:
-    """Calculates similarity percentage between two names."""
-    c1 = clean_name_for_comparison(name1)
-    c2 = clean_name_for_comparison(name2)
-    if not c1 or not c2:
-        return 0.0
-    return SequenceMatcher(None, c1, c2).ratio()
-
-
-def calculate_vehicle_age(reg_date_str: str) -> str:
-    """Calculates vehicle age automatically from registration date string."""
-    if not reg_date_str or reg_date_str == "NA":
-        return "NA"
-    
-    date_formats = ["%d/%m/%Y", "%d-%m-%Y", "%d-%b-%Y", "%Y-%m-%d"]
-    reg_date = None
-    
-    for fmt in date_formats:
-        try:
-            reg_date = datetime.strptime(reg_date_str.strip(), fmt)
-            break
-        except ValueError:
-            continue
-
-    if not reg_date:
-        return "NA"
-
-    today = datetime.now()
-    years = today.year - reg_date.year
-    months = today.month - reg_date.month
-
-    if months < 0:
-        years -= 1
-        months += 12
-
-    parts = []
-    if years > 0:
-        parts.append(f"{years} year{'s' if years > 1 else ''}")
-    if months > 0:
-        parts.append(f"{months} month{'s' if months > 1 else ''}")
-
-    return ", ".join(parts) if parts else "Less than a month"
-
-
-def get_latest_owner_sr_no(sr1: Any, sr2: Any) -> str:
-    """Picks the highest owner count number between both APIs."""
-    nums = []
-    for s in [sr1, sr2]:
-        val = clean_val(s)
-        if val != "NA":
-            match = re.search(r'\d+', val)
-            if match:
-                nums.append(int(match.group()))
-    if nums:
-        return str(max(nums))
-    return "1"
-
-
-def normalize_maker(maker_str: str, vh_class: str) -> str:
-    """Corrects known maker name mismatches based on vehicle class."""
-    maker = maker_str.upper()
-    vh = vh_class.upper()
-    if "HONDA CARS" in maker and ("SCOOTER" in vh or "M-CYCLE" in vh or "2WN" in vh):
-        return "HONDA MOTORCYCLE & SCOOTER INDIA"
-    return maker_str
-
-
-async def fetch_api_1(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, Any]:
-    try:
-        url = f"{API1_BASE_URL}?regn_no={vehicle_no}"
-        headers = {"ngrok-skip-browser-warning": "true"}
-        res = await client.get(url, headers=headers, timeout=12.0)
-        print(f"[API 1 Status]: {res.status_code}")
-        if res.status_code == 200:
-            return res.json()
-    except Exception as e:
-        print(f"API 1 Error: {e}")
-    return {}
-
-
-async def fetch_api_2(client: httpx.AsyncClient, vehicle_no: str) -> Dict[str, Any]:
-    try:
-        url = f"{API2_BASE_URL}/{vehicle_no}"
-        res = await client.get(url, timeout=12.0)
-        print(f"[API 2 Status]: {res.status_code}")
-        if res.status_code == 200:
-            return res.json()
-    except Exception as e:
-        print(f"API 2 Error: {e}")
-    return {}
-
-
-def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], vehicle_no: str) -> Dict[str, Any]:
-    a1_res = api1_data.get("meta_data", {}).get("signzy_response", {}).get("result", {})
-    a1_cust = api1_data.get("customer_details", {})
-    a1_veh = api1_data.get("vehicle_details", {})
-    a2_data = api2_data.get("data", {})
-
-    latest_sr_no = get_latest_owner_sr_no(a1_res.get("ownerCount"), a2_data.get("ownerCount"))
-    sr_num = int(latest_sr_no) if latest_sr_no.isdigit() else 1
-
-    # Extract all possible owner names across fields
-    cust_name = clean_val(a1_cust.get("full_name"))
-    signzy_name = clean_val(a1_res.get("owner"))
-    api2_name = clean_val(a2_data.get("owner"))
-
-    # Collect unique names in order of arrival
-    names_list = []
-    for nm in [cust_name, signzy_name, api2_name]:
-        if nm != "NA":
-            is_dup = False
-            for existing in names_list:
-                if calculate_similarity(nm, existing) >= 0.70:
-                    is_dup = True
-                    break
-            if not is_dup:
-                names_list.append(nm)
-
-    # Address extraction
-    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
-    addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
-
-    # Financer details extraction across APIs
-    financer_api1 = clean_val(a1_res.get("rcFinancer"), a1_veh.get("financer_name"))
-    financer_api2 = clean_val(a2_data.get("financerName"))
-
-    # If 2 or more distinct names are detected OR owner count is explicitly 2+, mark transfer
-    if len(names_list) >= 2 or sr_num >= 2:
-        owner_transfer_detected = True
-        
-        if len(names_list) >= 2:
-            out_owner_1 = names_list[0]
-            out_owner_2 = names_list[1]
-        elif len(names_list) == 1:
-            out_owner_1 = "NA"
-            out_owner_2 = names_list[0]
+def get_val(data: Any, *keys, default="NA") -> str:
+    """Helper function to safely extract deep nested dictionary values."""
+    curr = data
+    for k in keys:
+        if isinstance(curr, dict) and k in curr and curr[k] is not None:
+            curr = curr[k]
         else:
-            out_owner_1 = "NA"
-            out_owner_2 = "NA"
+            return default
+    return str(curr) if curr != "" else default
 
-        final_owner = f"1st Owner: {out_owner_1} | 2nd Owner: {out_owner_2}"
-        
-        # Format addresses based on 1st and 2nd owner
-        out_addr_1 = addr_1 if addr_1 != "NA" else "NA"
-        out_addr_2 = addr_2 if addr_2 != "NA" else (addr_1 if addr_1 != "NA" else "NA")
 
-        if out_addr_1 != "NA" and out_addr_2 != "NA" and out_addr_1 != out_addr_2:
-            final_address = f"1st Owner Address: {out_addr_1} | 2nd Owner Address: {out_addr_2}"
-        elif out_addr_1 != "NA":
-            final_address = f"1st Owner Address: {out_addr_1} | 2nd Owner Address: {out_addr_2}"
-        else:
-            final_address = out_addr_1 if out_addr_1 != "NA" else out_addr_2
-
-        # Financer Mapping according to Owner Count / Transfer
-        fin1 = financer_api1 if financer_api1 != "NA" else "NA"
-        fin2 = financer_api2 if (financer_api2 != "NA" and financer_api2 != financer_api1) else "NA"
-
-        if fin1 != "NA" or fin2 != "NA":
-            financer = f"1st Owner Financer: {fin1} | 2nd Owner Financer: {fin2}"
-            is_financed_status = "True"
-        else:
-            financer = "NA"
-            is_financed_status = "False"
-
-    else:
-        owner_transfer_detected = False
-        out_owner_1 = names_list[0] if names_list else "NA"
-        out_owner_2 = "NA"
-        final_owner = out_owner_1
-
-        if addr_1 != "NA" and addr_2 != "NA":
-            final_address = addr_1 if len(addr_1) >= len(addr_2) else addr_2
-        else:
-            final_address = addr_1 if addr_1 != "NA" else addr_2
-
-        out_addr_1 = final_address
-        out_addr_2 = "NA"
-
-        # Single Owner Financer Logic
-        financer = clean_val(a1_res.get("rcFinancer"), a2_data.get("financerName"), a1_veh.get("financer_name"))
-        raw_financed = clean_val(a1_veh.get("is_vehicle_financed"), a1_res.get("isFinanced"))
-        if raw_financed != "NA":
-            is_financed_status = raw_financed
-        else:
-            is_financed_status = "False" if financer.upper() in ["ON CASH", "CASH", "NA"] else "True"
-
-    reg_date = clean_val(a1_veh.get("registration_date"), a1_res.get("regDate"), a2_data.get("regDate"))
-    vehicle_age = clean_val(a1_res.get("vehicleAge"))
-    if vehicle_age == "NA":
-        vehicle_age = calculate_vehicle_age(reg_date)
-
-    vh_class = clean_val(a1_res.get("class"), a2_data.get("vehicleClass"))
-    raw_maker = clean_val(a1_res.get("vehicleManufacturerName"), a2_data.get("manufacturer"))
-    maker = normalize_maker(raw_maker, vh_class)
-
-    model = clean_val(a1_res.get("model"), a2_data.get("vehicle"))
-    variant = clean_val(a2_data.get("variant"))
-
-    raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
-    vh_upper = vh_class.upper()
-    is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] or any(k in vh_upper for k in ["GOODS", "COMMERCIAL", "TRANSPORT", "TAXI", "CAB", "PERMIT", "THREE WHEELER", "3WT"]) else False
-
-    # PUC Details Fallback
-    puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
-    puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"))
-
-    # Clean Maker-Model combination
-    if maker == "NA" and model == "NA":
-        maker_modal = "NA"
-    elif maker != "NA" and model != "NA":
-        maker_modal = f"{maker} {model}".strip()
-    else:
-        maker_modal = maker if maker != "NA" else model
-
-    # Smart Vehicle Category Detection (Fixes 2WN/3WN/4WN issue)
-    raw_cat = clean_val(a1_res.get("vehicleCategory"), a2_data.get("vehicleCategory"))
-    if raw_cat == "NA" or ("GOODS" in vh_upper and raw_cat == "4WN" and ("THREE" in vh_upper or "3WT" in vh_upper or "3W" in vh_upper)):
-        if any(k in vh_upper for k in ["THREE WHEELER", "3WT", "3W", "AUTO", "RICKSHAW"]):
-            raw_cat = "3WN"
-        elif any(k in vh_upper for k in ["CAR", "LMV", "SUV", "MOTOR CAR", "QUADRICYCLE"]):
-            raw_cat = "4WN"
-        elif any(k in vh_upper for k in ["SCOOTER", "M-CYCLE", "MOTORCYCLE", "TWO WHEELER", "2WN"]):
-            raw_cat = "2WN"
-        else:
-            raw_cat = "3WN" if ("THREE" in vh_upper or "3WT" in vh_upper) else ("4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN")
-
-    # RTO & State Fallback Logic
-    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
-    state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
-    if state_val == "NA" and rto_val != "NA" and "," in rto_val:
-        state_val = rto_val.split(",")[-1].strip()
-
-    # Extraction of New Detailed Technical Fields across APIs
-    mfg_mon_year = clean_val(a1_res.get("manufacturingDate"), a1_res.get("mfgDate"), a1_veh.get("manufacturing_date"), a2_data.get("manufactureDate"), a2_data.get("mfgDate"))
-    unladen_wt = clean_val(a1_res.get("unladenWeight"), a1_veh.get("unladen_weight"), a2_data.get("unladenWeight"), a2_data.get("unladenWt"))
-    gross_wt = clean_val(a1_res.get("grossVehicleWeight"), a1_veh.get("gross_weight"), a2_data.get("grossVehicleWeight"), a2_data.get("grossWt"))
-    wheelbase_val = clean_val(a1_res.get("wheelbase"), a1_veh.get("wheelbase"), a2_data.get("wheelbase"))
-    cylinders_val = clean_val(a1_res.get("noCylinders"), a1_res.get("cylinders"), a1_veh.get("no_of_cylinders"), a2_data.get("noCylinders"), a2_data.get("cylinders"))
-    cubic_capacity_val = clean_val(a1_res.get("cubicCapacity"), a1_res.get("cc"), a1_veh.get("cubic_capacity"), a2_data.get("cubicCapacity"), a2_data.get("cc"))
-    rto_code_val = clean_val(a1_res.get("rtoCode"), a1_veh.get("rto_code"), a2_data.get("rtoCode"))
-    tax_upto_val = clean_val(a1_res.get("mvTaxUpto"), a1_res.get("taxValidUpto"), a1_veh.get("tax_valid_upto"), a2_data.get("mvTaxUpto"), a2_data.get("taxValidUpto"))
-
-    data_payload = {
+def normalize_rc_data(raw_data: Dict[str, Any], input_reg_no: str = "NA") -> Dict[str, Any]:
+    """
+    Parses and normalizes raw JSON response from API 1 or API 2 
+    into a standardized RC output dictionary.
+    """
+    # Standardized Output Blueprint
+    result = {
         "id": 2141636,
         "status": "SUCCESS",
-        "rto": rto_val,
-        "reg_no": vehicle_no.upper(),
+        "rto": "NA",
+        "reg_no": input_reg_no,
         "pb_vehicle_code": "0",
-        "regn_dt": reg_date,
-        "chasi_no": clean_val(api1_data.get("chassis_number"), a2_data.get("chassis")),
-        "engine_no": clean_val(api1_data.get("engine_number"), a2_data.get("engine")),
-        "owner_name": final_owner,
-        "owner_1_name": out_owner_1,
-        "owner_2_name": out_owner_2,
-        "owner_transfer_detected": owner_transfer_detected,
-        "vh_class": vh_class,
-        "vehicle_category": raw_cat,
-        "vehicle_model": model,
-        "variant": variant,
-        "is_commercial": is_commercial,
-        "fuel_type": clean_val(a1_res.get("type"), a2_data.get("fuelType")),
-        "maker": maker,
-        "vehicle_age": vehicle_age,
-        "insUpto": clean_val(api1_data.get("previous_policy_exp_date"), a2_data.get("insuranceUpto")),
-        "state": state_val,
-        "policy_no": clean_val(a1_res.get("vehicleInsurancePolicyNumber"), a2_data.get("insurancePolicyNumber")),
-        "puc_no": puc_no,
-        "puc_upto": puc_upto,
-        "insurance_comp": clean_val(a1_res.get("vehicleInsuranceCompanyName"), a2_data.get("insuranceCompanyName")),
-        "financer_name": financer,
-        "is_financed": is_financed_status,
+        "regn_dt": "NA",
+        "chasi_no": "NA",
+        "engine_no": "NA",
+        "owner_name": "NA",
+        "owner_1_name": "NA",
+        "owner_2_name": "NA",
+        "owner_transfer_detected": False,
+        "vh_class": "NA",
+        "vehicle_category": "NA",
+        "vehicle_model": "NA",
+        "variant": "NA",
+        "is_commercial": False,
+        "fuel_type": "NA",
+        "maker": "NA",
+        "vehicle_age": "NA",
+        "insUpto": "NA",
+        "state": "NA",
+        "policy_no": "NA",
+        "puc_no": "NA",
+        "puc_upto": "NA",
+        "insurance_comp": "NA",
+        "financer_name": "NA",
+        "is_financed": "False",
         "source": "PARIVAHAN_SERVICE_GATEWAY",
-        "maker_modal": maker_modal,
-        "father_name": clean_val(a1_res.get("ownerFatherName"), a2_data.get("ownerFatherName")),
-        "address": final_address,
-        "address_1": out_addr_1,
-        "address_2": out_addr_2,
-        "owner_sr_no": latest_sr_no,
-        "vehicle_color": clean_val(a1_res.get("vehicleColour"), a1_veh.get("vehicle_color")),
-        "fitness_upto": clean_val(a1_res.get("rcExpiryDate")),
-        "no_of_seats": clean_val(a1_res.get("vehicleSeatCapacity"), a2_data.get("seatCapacity"), "2"),
-        "fuel_norms": clean_val(a1_res.get("normsType")),
+        "maker_modal": "NA",
+        "father_name": "NA",
+        "address": "NA",
+        "address_1": "NA",
+        "address_2": "NA",
+        "owner_sr_no": "1",
+        "vehicle_color": "NA",
+        "fitness_upto": "NA",
+        "no_of_seats": "NA",
+        "fuel_norms": "NA",
         "mobile_no": "NA",
-        "noc_details": clean_val(a1_res.get("nocDetails"), a2_data.get("nocDetails")),
-        "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
-        "blacklist_details": a1_res.get("blacklistDetails", []),
-        "manufactured_month_year": mfg_mon_year,
-        "unladen_weight": unladen_wt,
-        "gross_vehicle_weight": gross_wt,
-        "wheelbase": wheelbase_val,
-        "cylinder_count": cylinders_val,
-        "cubic_capacity": cubic_capacity_val,
-        "rto_code": rto_code_val,
-        "tax_valid_upto": tax_upto_val,
+        "noc_details": "NA",
+        "blacklist_status": "Clean",
+        "blacklist_details": [],
+        "manufactured_month_year": "NA",
+        "unladen_weight": "NA",
+        "gross_vehicle_weight": "NA",
+        "wheelbase": "NA",
+        "cylinder_count": "NA",
+        "cubic_capacity": "NA",
+        "rto_code": "NA",
+        "tax_valid_upto": "NA",
         "permit_details": {
-            "permit_number": clean_val(a1_res.get("permitNumber")),
-            "permit_type": clean_val(a1_res.get("permitType")),
-            "permit_valid_upto": clean_val(a1_res.get("permitValidUpto"))
+            "permit_number": "NA",
+            "permit_type": "NA",
+            "permit_valid_upto": "NA"
         }
     }
 
-    return {
-        "query": vehicle_no.upper(),
-        "rc_details": {
-            "status": True,
-            "response_code": 200,
-            "response_message": "Fetched [ PARIVAHAN SERVICE ]",
-            "data": [data_payload]
-        }
-    }
+    # ==========================================
+    # PARSING LOGIC FOR API 1 FORMAT
+    # ==========================================
+    if "data" in raw_data and isinstance(raw_data["data"], dict) and "chassis" in raw_data["data"]:
+        d = raw_data["data"]
+        result["reg_no"] = d.get("regNo", input_reg_no)
+        result["chasi_no"] = d.get("chassis", "NA")
+        result["engine_no"] = d.get("engine", "NA")
+        result["owner_name"] = d.get("owner", "NA")
+        result["father_name"] = d.get("ownerFatherName", "NA")
+        result["regn_dt"] = d.get("regDate", "NA")
+        result["maker"] = d.get("manufacturer", "NA")
+        result["vehicle_model"] = d.get("vehicle", "NA")
+        result["variant"] = d.get("variant", "NA")
+        result["maker_modal"] = f"{result['maker']} {result['vehicle_model']}".strip()
+        result["vh_class"] = d.get("vehicleClass", "NA")
+        result["vehicle_category"] = d.get("vehicleType", "NA")
+        result["fuel_type"] = d.get("fuelType", "NA")
+        result["is_commercial"] = d.get("isCommercial", False)
+        
+        # Insurance & PUC
+        result["insurance_comp"] = d.get("insuranceCompanyName", "NA")
+        result["policy_no"] = d.get("insurancePolicyNumber", "NA")
+        result["insUpto"] = d.get("insuranceUpto", "NA")
+        result["puc_no"] = d.get("puccNumber", "NA")
+        result["puc_upto"] = d.get("puccValidUpto", "NA")
+        
+        # Financer & Address
+        result["financer_name"] = d.get("financerName", "NA")
+        result["is_financed"] = "True" if result["financer_name"] != "NA" else "False"
+        result["address"] = d.get("presentAddress") or d.get("permAddress") or "NA"
+        result["address_1"] = d.get("presentAddress", "NA")
+        result["address_2"] = d.get("permAddress", "NA")
+        
+        # Technical Specs & RTO
+        result["no_of_seats"] = str(d.get("seatCapacity", "NA"))
+        result["cubic_capacity"] = str(d.get("cubicCapacity", "NA"))
+        result["rto_code"] = d.get("rtoCode", "NA")
+        result["rto"] = get_val(d, "rtoData", "rtoName")
+        result["state"] = get_val(d, "rtoData", "statename")
+        
+        # Manufacturing Date
+        mfg = d.get("manufacturerMonthYear", "NA")
+        if mfg == "NA" and "manufacturerYear" in d:
+            mfg = str(d["manufacturerYear"])
+        result["manufactured_month_year"] = mfg
 
+    # ==========================================
+    # PARSING LOGIC FOR API 2 FORMAT
+    # ==========================================
+    elif "meta_data" in raw_data or "chassis_number" in raw_data:
+        res = raw_data.get("meta_data", {}).get("signzy_response", {}).get("result", {})
+        cust = raw_data.get("customer_details", {})
+        v_det = raw_data.get("vehicle_details", {})
+
+        # Primary Identifiers
+        result["reg_no"] = raw_data.get("registration_number", get_val(res, "regNo", default=input_reg_no)).replace("-", "")
+        result["chasi_no"] = raw_data.get("chassis_number", get_val(res, "chassis"))
+        result["engine_no"] = raw_data.get("engine_number", get_val(res, "engine"))
+        
+        # Owner & Father
+        result["owner_name"] = cust.get("full_name") or get_val(res, "owner")
+        result["father_name"] = get_val(res, "ownerFatherName", default=get_val(raw_data, "nominee_details", "name"))
+        result["owner_sr_no"] = get_val(res, "ownerCount", default="1")
+        
+        # Registration & Age
+        result["regn_dt"] = v_det.get("registration_date") or get_val(res, "regDate")
+        
+        # Manufacturing Month/Year
+        mfg_my = get_val(res, "vehicleManufacturingMonthYear")
+        if mfg_my == "NA":
+            m_m = raw_data.get("manufactured_month")
+            m_y = raw_data.get("manufactured_year")
+            if m_m and m_y:
+                mfg_my = f"{m_m:02d}/{m_y}"
+        result["manufactured_month_year"] = mfg_my
+
+        # Vehicle Info & Class
+        result["maker"] = get_val(res, "vehicleManufacturerName")
+        result["vehicle_model"] = get_val(res, "model")
+        result["maker_modal"] = f"{result['maker']} {result['vehicle_model']}".strip()
+        result["vh_class"] = get_val(res, "class")
+        result["vehicle_category"] = get_val(res, "vehicleCategory")
+        result["fuel_type"] = get_val(res, "type")
+        result["vehicle_color"] = v_det.get("vehicle_color") or get_val(res, "vehicleColour")
+        result["is_commercial"] = raw_data.get("is_commercial", False)
+        
+        # Variant Handling (Extract first variant if score exists)
+        variants = get_val(res, "mappings", "variantIds", default=[])
+        if isinstance(variants, list) and len(variants) > 0:
+            result["variant"] = str(variants[0].get("variantId", "NA"))
+
+        # Insurance & PUC
+        result["insurance_comp"] = get_val(res, "vehicleInsuranceCompanyName")
+        result["policy_no"] = raw_data.get("previous_policy_number") or get_val(res, "vehicleInsurancePolicyNumber")
+        result["insUpto"] = raw_data.get("previous_policy_exp_date") or get_val(res, "vehicleInsuranceUpto")
+        result["puc_no"] = get_val(res, "puccNumber")
+        result["puc_upto"] = get_val(res, "puccUpto")
+        
+        # Financer & Address
+        result["financer_name"] = get_val(res, "rcFinancer")
+        result["is_financed"] = "True" if v_det.get("is_vehicle_financed") or result["financer_name"] != "NA" else "False"
+        result["address"] = get_val(cust, "communication_address", "address_line", default=get_val(res, "presentAddress"))
+        result["address_1"] = get_val(cust, "communication_address", "address_line")
+        result["address_2"] = get_val(res, "permanentAddress")
+
+        # Technical Specs & RTO
+        result["no_of_seats"] = get_val(res, "vehicleSeatCapacity")
+        result["cubic_capacity"] = get_val(res, "vehicleCubicCapacity")
+        result["gross_vehicle_weight"] = get_val(res, "grossVehicleWeight")
+        result["unladen_weight"] = get_val(res, "unladenWeight")
+        result["wheelbase"] = get_val(res, "wheelbase")
+        result["cylinder_count"] = get_val(res, "vehicleCylindersNo")
+        result["fuel_norms"] = get_val(res, "normsType")
+        result["tax_valid_upto"] = get_val(res, "vehicleTaxUpto")
+        result["rto_code"] = raw_data.get("rb_rto_code") or get_val(res, "rtoCode")
+        result["rto"] = get_val(res, "regAuthority")
+
+        # Permit details
+        result["permit_details"] = {
+            "permit_number": get_val(res, "permitNumber"),
+            "permit_type": get_val(res, "permitType"),
+            "permit_valid_upto": get_val(res, "permitValidUpto")
+        }
+
+    # Final Sanitization: Replace empty strings with "NA"
+    for k, v in result.items():
+        if v == "" or v is None:
+            result[k] = "NA"
+
+    return result
+
+# ------------------------------------------------------------------
+# FastAPI Routes
+# ------------------------------------------------------------------
 
 @app.get("/")
 def home():
-    return {
-        "status": "Online",
-        "message": "Parivahan RC Master API Gateway is active."
-    }
+    return {"status": "Active", "message": "RC Normalizer API is running smoothly!"}
 
 
-@app.get("/api/v1/vehicle/{vehicle_no}")
-async def get_vehicle_json(vehicle_no: str):
-    clean_vno = vehicle_no.replace(" ", "").replace("-", "").upper()
-    async with httpx.AsyncClient() as client:
-        api1_resp, api2_resp = await asyncio.gather(
-            fetch_api_1(client, clean_vno),
-            fetch_api_2(client, clean_vno)
-        )
-    formatted_data = format_custom_json(api1_resp, api2_resp, clean_vno)
-    return JSONResponse(content=formatted_data, headers={"Content-Type": "application/json; charset=utf-8"})
+@app.post("/normalize-rc")
+def process_rc_json(payload: Dict[str, Any] = Body(...)):
+    """
+    Accepts raw JSON from API 1 or API 2 and returns normalized RC details.
+    """
+    try:
+        normalized_output = normalize_rc_data(payload)
+        return {
+            "status": True,
+            "message": "Data normalized successfully",
+            "rc_details": normalized_output
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse JSON data: {str(e)}")
 
+# ------------------------------------------------------------------
+# Entry Point
+# ------------------------------------------------------------------
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
