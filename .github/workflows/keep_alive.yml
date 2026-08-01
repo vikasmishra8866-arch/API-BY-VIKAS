@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Send Ping Request to Render API
         run: |
-          curl -s -f https://your-app-name.onrender.com/ > /dev/null
+          curl -s -f https://vehicle-master-api.onrender.com/api/v1/vehicle/GJ01HZ8969/ > /dev/null
           echo "Ping successful! Render app kept alive at $(date)"
