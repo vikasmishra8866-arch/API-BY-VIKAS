@@ -1,0 +1,16 @@
+name: Render Keep Alive Cron
+
+on:
+  schedule:
+    # Har 4 minute me chalega
+    - cron: '*/4 * * * *'
+  workflow_dispatch: # Manual test ke liye button
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Ping Request to Render API
+        run: |
+          curl -s -f https://your-app-name.onrender.com/ > /dev/null
+          echo "Ping successful! Render app kept alive at $(date)"
