@@ -269,7 +269,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             raw_cat = "4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN"
 
     # RTO & State Fallback Logic
-    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
+    rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"), a2_data.get("rtoCode"))
     state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
     if state_val == "NA" and rto_val != "NA" and "," in rto_val:
         state_val = rto_val.split(",")[-1].strip()
@@ -322,7 +322,15 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             "permit_number": clean_val(a1_res.get("permitNumber")),
             "permit_type": clean_val(a1_res.get("permitType")),
             "permit_valid_upto": clean_val(a1_res.get("permitValidUpto"))
-        }
+        },
+        "manufacturing_date": clean_val(a1_res.get("manufacturingDate"), a1_veh.get("manufacturing_date"), a2_data.get("manufactureDate"), a2_data.get("manufacturedMonthYear")),
+        "unladen_weight": clean_val(a1_res.get("unladenWeight"), a2_data.get("unladenWeight")),
+        "gross_vehicle_weight": clean_val(a1_res.get("grossVehicleWeight"), a2_data.get("grossVehicleWeight")),
+        "wheelbase": clean_val(a1_res.get("wheelbase"), a2_data.get("wheelbase")),
+        "cylinder_count": clean_val(a1_res.get("numberCylinders"), a1_res.get("cylinderCount"), a2_data.get("cylindersCount")),
+        "cubic_capacity": clean_val(a1_res.get("cubicCapacity"), a2_data.get("cubicCapacity")),
+        "rto_code": clean_val(a1_res.get("rtoCode"), a2_data.get("rtoCode")),
+        "tax_upto": clean_val(a1_res.get("taxUpto"), a1_veh.get("tax_upto"), a2_data.get("taxValidUpto"))
     }
 
     return {
