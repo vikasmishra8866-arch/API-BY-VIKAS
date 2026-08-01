@@ -162,17 +162,9 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
             if not is_dup:
                 names_list.append(nm)
 
-    # Address extraction across all keys
-    addr_1 = clean_val(
-        a1_cust.get("communication_address", {}).get("address_line"),
-        a1_res.get("permanentAddress"),
-        a1_res.get("presentAddress")
-    )
-    addr_2 = clean_val(
-        a2_data.get("presentAddress"),
-        a2_data.get("permAddress"),
-        a2_data.get("permanentAddress")
-    )
+    # Address extraction
+    addr_1 = clean_val(a1_cust.get("communication_address", {}).get("address_line"), a1_res.get("permanentAddress"))
+    addr_2 = clean_val(a2_data.get("presentAddress"), a2_data.get("permAddress"))
 
     # Financer details extraction across APIs
     financer_api1 = clean_val(a1_res.get("rcFinancer"), a1_veh.get("financer_name"))
@@ -251,28 +243,12 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     variant = clean_val(a2_data.get("variant"))
 
     raw_comm = str(clean_val(api1_data.get("is_commercial"), a1_res.get("isCommercial"))).upper()
-    is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] else False
+    vh_upper = vh_class.upper()
+    is_commercial = True if raw_comm in ["TRUE", "1", "YES", "COMMERCIAL"] or any(k in vh_upper for k in ["GOODS", "COMMERCIAL", "TRANSPORT", "TAXI", "CAB", "PERMIT", "THREE WHEELER", "3WT"]) else False
 
-    # Expanded PUC Details Fallback to capture all variations (pucNumber, puccNumber, pucNo, puccNo, etc.)
-    puc_no = clean_val(
-        a1_res.get("puccNumber"),
-        a1_res.get("pucNumber"),
-        a1_res.get("puc_number"),
-        a1_veh.get("puc_number"),
-        a2_data.get("puccNumber"),
-        a2_data.get("pucNumber"),
-        a2_data.get("pucNo"),
-        a2_data.get("puccNo")
-    )
-    puc_upto = clean_val(
-        a1_res.get("puccUpto"),
-        a1_res.get("pucUpto"),
-        a1_res.get("pucValidUpto"),
-        a1_veh.get("puc_expiry"),
-        a2_data.get("puccValidUpto"),
-        a2_data.get("pucValidUpto"),
-        a2_data.get("pucUpto")
-    )
+    # PUC Details Fallback
+    puc_no = clean_val(a1_res.get("puccNumber"), a1_veh.get("puc_number"), a2_data.get("puccNumber"), a2_data.get("pucNumber"))
+    puc_upto = clean_val(a1_res.get("puccUpto"), a1_veh.get("puc_expiry"), a2_data.get("puccValidUpto"))
 
     # Clean Maker-Model combination
     if maker == "NA" and model == "NA":
@@ -282,22 +258,33 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
     else:
         maker_modal = maker if maker != "NA" else model
 
-    # Smart Vehicle Category Detection (Fixes 2WN/4WN issue)
+    # Smart Vehicle Category Detection (Fixes 2WN/3WN/4WN issue)
     raw_cat = clean_val(a1_res.get("vehicleCategory"), a2_data.get("vehicleCategory"))
-    if raw_cat == "NA":
-        vh_upper = vh_class.upper()
-        if any(k in vh_upper for k in ["CAR", "LMV", "SUV", "MOTOR CAR", "QUADRICYCLE", "GOODS"]):
+    if raw_cat == "NA" or ("GOODS" in vh_upper and raw_cat == "4WN" and ("THREE" in vh_upper or "3WT" in vh_upper or "3W" in vh_upper)):
+        if any(k in vh_upper for k in ["THREE WHEELER", "3WT", "3W", "AUTO", "RICKSHAW"]):
+            raw_cat = "3WN"
+        elif any(k in vh_upper for k in ["CAR", "LMV", "SUV", "MOTOR CAR", "QUADRICYCLE"]):
             raw_cat = "4WN"
         elif any(k in vh_upper for k in ["SCOOTER", "M-CYCLE", "MOTORCYCLE", "TWO WHEELER", "2WN"]):
             raw_cat = "2WN"
         else:
-            raw_cat = "4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN"
+            raw_cat = "3WN" if ("THREE" in vh_upper or "3WT" in vh_upper) else ("4WN" if "CAR" in vh_upper or "LMV" in vh_upper else "2WN")
 
     # RTO & State Fallback Logic
     rto_val = clean_val(a1_res.get("regAuthority"), a2_data.get("regAuthority"))
     state_val = clean_val(a1_res.get("state"), a2_data.get("state"))
     if state_val == "NA" and rto_val != "NA" and "," in rto_val:
         state_val = rto_val.split(",")[-1].strip()
+
+    # Extraction of New Detailed Technical Fields across APIs
+    mfg_mon_year = clean_val(a1_res.get("manufacturingDate"), a1_res.get("mfgDate"), a1_veh.get("manufacturing_date"), a2_data.get("manufactureDate"), a2_data.get("mfgDate"))
+    unladen_wt = clean_val(a1_res.get("unladenWeight"), a1_veh.get("unladen_weight"), a2_data.get("unladenWeight"), a2_data.get("unladenWt"))
+    gross_wt = clean_val(a1_res.get("grossVehicleWeight"), a1_veh.get("gross_weight"), a2_data.get("grossVehicleWeight"), a2_data.get("grossWt"))
+    wheelbase_val = clean_val(a1_res.get("wheelbase"), a1_veh.get("wheelbase"), a2_data.get("wheelbase"))
+    cylinders_val = clean_val(a1_res.get("noCylinders"), a1_res.get("cylinders"), a1_veh.get("no_of_cylinders"), a2_data.get("noCylinders"), a2_data.get("cylinders"))
+    cubic_capacity_val = clean_val(a1_res.get("cubicCapacity"), a1_res.get("cc"), a1_veh.get("cubic_capacity"), a2_data.get("cubicCapacity"), a2_data.get("cc"))
+    rto_code_val = clean_val(a1_res.get("rtoCode"), a1_veh.get("rto_code"), a2_data.get("rtoCode"))
+    tax_upto_val = clean_val(a1_res.get("mvTaxUpto"), a1_res.get("taxValidUpto"), a1_veh.get("tax_valid_upto"), a2_data.get("mvTaxUpto"), a2_data.get("taxValidUpto"))
 
     data_payload = {
         "id": 2141636,
@@ -343,6 +330,14 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "noc_details": clean_val(a1_res.get("nocDetails"), a2_data.get("nocDetails")),
         "blacklist_status": clean_val(a1_res.get("blacklistStatus"), "Clean"),
         "blacklist_details": a1_res.get("blacklistDetails", []),
+        "manufactured_month_year": mfg_mon_year,
+        "unladen_weight": unladen_wt,
+        "gross_vehicle_weight": gross_wt,
+        "wheelbase": wheelbase_val,
+        "cylinder_count": cylinders_val,
+        "cubic_capacity": cubic_capacity_val,
+        "rto_code": rto_code_val,
+        "tax_valid_upto": tax_upto_val,
         "permit_details": {
             "permit_number": clean_val(a1_res.get("permitNumber")),
             "permit_type": clean_val(a1_res.get("permitType")),
