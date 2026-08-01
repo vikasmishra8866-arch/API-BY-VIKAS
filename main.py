@@ -359,7 +359,7 @@ def format_custom_json(api1_data: Dict[str, Any], api2_data: Dict[str, Any], veh
         "rc_details": {
             "status": True,
             "response_code": 200,
-            "response_message": "Fetched [ PARIVAHAN SERVICE ]",
+            "response_message": "Fetched [ SENPAI ]",
             "data": [data_payload]
         }
     }
