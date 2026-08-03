@@ -381,6 +381,24 @@ async def get_vehicle_json(vehicle_no: str):
             fetch_api_1(client, clean_vno),
             fetch_api_2(client, clean_vno)
         )
+    
+    # Validation: If both APIs failed to fetch data
+    if not api1_resp and not api2_resp:
+        not_found_response = {
+            "query": clean_vno,
+            "rc_details": {
+                "status": False,
+                "response_code": 404,
+                "response_message": "Vehicle Details Not Found",
+                "data": []
+            }
+        }
+        return JSONResponse(
+            content=not_found_response, 
+            status_code=404, 
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
+
     formatted_data = format_custom_json(api1_resp, api2_resp, clean_vno)
     return JSONResponse(content=formatted_data, headers={"Content-Type": "application/json; charset=utf-8"})
 
